@@ -76,11 +76,11 @@ const API_URL = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx6lTe1jNrAj7u6Vnrz_PGdIUOh9fJ4QZ687UUhjpDoGcgyd8AErfgl9T034SKELBZP/exec';
 
 // ⚡ CONSTANTES PARA CÁLCULO DA TAXA DE ENTREGA
-const LATITUDE_CENTRAL = -4.169490;  // Sua latitude
-const LONGITUDE_CENTRAL = -38.917917; // Sua longitude
-const RAIO_BASE_METROS = 100; // Cada 100 metros
-const TAXA_POR_RAIO = 2.00; // R$ 2,00 a cada 100 metros
-const TAXA_MINIMA = 5.00; // Taxa mínima de entrega
+const LATITUDE_CENTRAL = -4.169490;
+const LONGITUDE_CENTRAL = -38.917917;
+const RAIO_BASE_METROS = 100;
+const TAXA_POR_RAIO = 2.00;
+const TAXA_MINIMA = 5.00;
 
 let cart = [];
 let notifications = [];
@@ -352,7 +352,6 @@ async function checkTelegramUpdates() {
 
 const pedidosBloqueados = new Set();
 
-// ⚡ FUNÇÃO ATUALIZADA: Agora atualiza Telegram mesmo com usuário offline
 async function processarCallbackStatus(data, callbackObj) {
   const match = data.match(/status_(\d+)_(\w+)/);
   if (!match) return;
@@ -938,6 +937,8 @@ function addToCart(id){
 
 function showCart(){
   currentView = 'cart';
+  taxaEntrega = 0; // ⚡ ZERA A TAXA
+  
   let html = '<h3>Seu Carrinho</h3>';
   if(cart.length === 0){ 
     html += '<p>Carrinho vazio</p>';
@@ -1040,7 +1041,7 @@ function startCheckout(){
         const lng = position.coords.longitude;
         const localizacaoData = await getEnderecoFromCoords(lat, lng);
         
-        // ⚡ CALCULA TAXA DE ENTREGA
+        // ⚡ SEMPRE recalcula a taxa
         taxaEntrega = calcularTaxaEntrega(lat, lng);
         localizacaoData.taxaEntrega = taxaEntrega;
         
@@ -1068,27 +1069,15 @@ function showDadosEntrega(localizacaoData) {
   
   const html = `
     <div class="card">
-      <h3>📋 Dados de Entrega</h3>
-      
-      <div style="background:#fff8e1;padding:10px;border-radius:6px;margin:10px 0;color:#000;border-left:4px solid #ffc107;font-size:14px;">
-        <p><strong>💰 Taxa de Entrega Calculada:</strong> R$ ${taxaEntregaAtual.toFixed(2)}</p>
-        <p><small>(R$ ${TAXA_MINIMA.toFixed(2)} mínima + R$ ${TAXA_POR_RAIO.toFixed(2)} a cada ${RAIO_BASE_METROS}m)</small></p>
-      </div>
-      
+      <h3>Dados de Entrega</h3>
       ${localizacaoData.endereco ? `
-        <p><strong>📍 Endereço detectado:</strong></p>
+        <p><strong>Endereço detectado:</strong></p>
         <p style="background:#f0f8ff;padding:10px;border-radius:5px;color:#000">${localizacaoData.endereco}</p>
         <p><small>Se o endereço estiver incorreto, edite abaixo:</small></p>
       ` : ''}
       
-      <div style="background:#f9f9f9;padding:10px;border-radius:5px;margin:15px 0;">
-        <p><strong>📊 Resumo:</strong></p>
-        <p>Total produtos: R$ ${totalProdutos.toFixed(2)}</p>
-        <p>Taxa de entrega: <strong>R$ ${taxaEntregaAtual.toFixed(2)}</strong></p>
-        <p style="font-size:18px;font-weight:bold;color:#3a0060;margin-top:5px;">
-          Total a pagar: <strong>R$ ${totalComTaxa.toFixed(2)}</strong>
-        </p>
-      </div>
+      <p><strong>Taxa de entrega:</strong> R$ ${taxaEntregaAtual.toFixed(2)}</p>
+      <p><strong>Total com taxa:</strong> R$ ${totalComTaxa.toFixed(2)}</p>
       
       <form id="dadosForm">
         <input type="tel" class="input-field" id="whatsapp" placeholder="Seu Telefone (com DDD)" required>
@@ -1096,13 +1085,9 @@ function showDadosEntrega(localizacaoData) {
         <input type="text" class="input-field" id="complemento" placeholder="Complemento ou ponto de referência" maxlength="30">
         <input type="hidden" id="mapaUrl" value="${localizacaoData.mapaUrl || ''}">
         <input type="hidden" id="taxaEntrega" value="${taxaEntregaAtual}">
-        <input type="hidden" id="latitude" value="${localizacaoData.latitude}">
-        <input type="hidden" id="longitude" value="${localizacaoData.longitude}">
         
         <div style="margin-top: 15px;">
-          <button type="submit" class="btn" style="width:100%;padding:15px;font-size:16px;">
-            💳 Continuar para Pagamento (R$ ${totalComTaxa.toFixed(2)})
-          </button>
+          <button type="submit" class="btn">Continuar para Pagamento</button>
         </div>
       </form>
     </div>`;
@@ -1137,48 +1122,39 @@ function showUploadComprovante(localizacaoData, descricao) {
   const taxaEntregaAtual = localizacaoData.taxaEntrega || 0;
   const totalComTaxa = totalProdutos + taxaEntregaAtual;
   
-  const mapaHtml = localizacaoData.mapaUrl ? `<p><strong>📍 Localização no mapa:</strong> <a href="${localizacaoData.mapaUrl}" target="_blank">Abrir no Google Maps</a></p>` : '';
-  const taxaHtml = taxaEntregaAtual > 0 ? `<p><strong>🚚 Taxa de entrega:</strong> R$ ${taxaEntregaAtual.toFixed(2)}</p>` : '';
+  const mapaHtml = localizacaoData.mapaUrl ? `<p><strong>Localização no mapa:</strong> <a href="${localizacaoData.mapaUrl}" target="_blank">Abrir no Google Maps</a></p>` : '';
   
   const html = `
     <div class="card">
-      <h3>📋 Resumo Final do Pedido</h3>
-      <p><strong>📱 Telefone:</strong> ${localizacaoData.whatsapp}</p>
-      <p><strong>📍 Endereço:</strong> ${localizacaoData.endereco}</p>
+      <h3>Resumo do Pedido</h3>
+      <p><strong>Telefone:</strong> ${localizacaoData.whatsapp}</p>
+      <p><strong>Endereço:</strong> ${localizacaoData.endereco}</p>
       ${mapaHtml}
-      <p><strong>📝 Complemento:</strong> ${descricao || 'Nenhum'}</p>
-      
-      <div style="background:#f9f9f9;padding:10px;border-radius:5px;margin:15px 0;">
-        <p><strong>💰 Detalhamento:</strong></p>
-        <p>Total dos produtos: R$ ${totalProdutos.toFixed(2)}</p>
-        ${taxaHtml}
-        <hr style="margin:10px 0;">
-        <p style="font-size:18px;font-weight:bold;color:#3a0060;">
-          Total a pagar: <strong>R$ ${totalComTaxa.toFixed(2)}</strong>
-        </p>
-      </div>
+      <p><strong>Complemento:</strong> ${descricao || 'Nenhum'}</p>
+      <p><strong>Taxa de entrega:</strong> R$ ${taxaEntregaAtual.toFixed(2)}</p>
+      <p><strong>Total:</strong> R$ ${totalComTaxa.toFixed(2)}</p>
     </div>
     
     <div class="pix-info">
-      <h3>💳 Pagamento PIX</h3>
+      <h3>Pagamento PIX</h3>
       <p><strong>Chave PIX:</strong> 123.456.789-00</p>
-      <p><strong>Valor TOTAL:</strong> R$ ${totalComTaxa.toFixed(2)}</p>
+      <p><strong>Valor:</strong> R$ ${totalComTaxa.toFixed(2)}</p>
       <p><strong>Beneficiário:</strong> Delivery Express</p>
       <p><em>Envie o comprovante do pagamento PIX abaixo</em></p>
     </div>
     
     <div class="card">
-      <h3>📎 Enviar Comprovante de Pagamento PIX</h3>
+      <h3>Enviar Comprovante de Pagamento PIX</h3>
       <p>Envie uma foto ou PDF do comprovante (máximo 2 MB)</p>
       <div class="upload-area" id="uploadArea">
-        <p>📁 Arraste o arquivo aqui ou clique para selecionar</p>
+        <p>Arraste o arquivo aqui ou clique para selecionar</p>
         <input type="file" id="fileInput" accept="image/*,.pdf" style="display: none">
         <button class="btn" onclick="document.getElementById('fileInput').click()">Selecionar Arquivo</button>
       </div>
       <div id="fileInfo"></div>
       <div class="finalizar-btn-container">
         <button class="btn" id="submitBtn" disabled onclick="finalizarPedidoComComprovante('${localizacaoData.endereco.replace(/'/g, "\\'")}', '${(descricao || '').replace(/'/g, "\\'")}', '${localizacaoData.mapaUrl.replace(/'/g, "\\'")}', '${localizacaoData.whatsapp.replace(/'/g, "\\'")}', ${taxaEntregaAtual})" style="width: 100%; padding: 15px; font-size: 18px;">
-          ✅ Finalizar Pedido (R$ ${totalComTaxa.toFixed(2)})
+          Finalizar Pedido
         </button>
       </div>`;
   
@@ -1203,7 +1179,7 @@ function showUploadComprovante(localizacaoData, descricao) {
     if (!file.type.match('image.*') && !file.type.match('application.pdf')) { alert('❌ Formato não permitido! Apenas imagens ou PDF.'); return; }
     selectedFile = file;
     const fileSize = (file.size / 1024 / 1024).toFixed(2);
-    fileInfo.innerHTML = `<div class="file-info"><strong>📄 ${file.name}</strong><br>Tipo: ${file.type}<br>Tamanho: ${fileSize} MB<br>✅ Arquivo pronto para envio</div>`;
+    fileInfo.innerHTML = `<div class="file-info"><strong>${file.name}</strong><br>Tipo: ${file.type}<br>Tamanho: ${fileSize} MB<br>✅ Arquivo pronto para envio</div>`;
     submitBtn.disabled = false; submitBtn.classList.remove('btn-disabled');
   }
   
@@ -1248,7 +1224,7 @@ function showUploadComprovante(localizacaoData, descricao) {
       saveToStorage(); 
       await sendTelegramNotification(pedido);
       
-      alert(`✅ Pedido #${pedido.codigo} confirmado!\n📱 Notificação enviada\n💰 Total: R$ ${totalComTaxa.toFixed(2)}\n📍 Entrega em: ${localizacao}`);
+      alert(`✅ Pedido #${pedido.codigo} confirmado!\n💰 Total: R$ ${totalComTaxa.toFixed(2)}\n📍 Entrega em: ${localizacao}`);
       
       cart = []; 
       saveToStorage(); 
@@ -1276,7 +1252,7 @@ function showNotifs(){
         <div>${notif.msg}</div>
         <small>${notif.data}</small>
         <p><strong>Status:</strong> ${notif.status}</p>
-        ${podeBaixar ? `<button class="btn" onclick="baixarNotaFiscalIndividual(${notif.codigo})" style="margin-top: 10px;">📄 Baixar Nota Fiscal</button>` : ''}
+        ${podeBaixar ? `<button class="btn" onclick="baixarNotaFiscalIndividual(${notif.codigo})" style="margin-top: 10px;">Baixar Nota Fiscal</button>` : ''}
       </div>`;
     });
   }
