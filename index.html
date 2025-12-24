@@ -349,6 +349,9 @@ async function processarCallbackStatus(data, callbackObj) {
   if (novoStatus === 'entregue' || novoStatus === 'cancelado') {
     pedidosBloqueados.add(chave);
   }
+  if (messageIds[codigo]) {
+  await atualizarMensagemTelegramNoMomento(codigo, textoStatus);
+  }
   
   atualizarStatusPedido(codigo, textoStatus, true);
   
