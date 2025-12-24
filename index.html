@@ -84,50 +84,20 @@ const TAXA_MINIMA = 5.00;
 
 let cart = [];
 let notifications = [];
+let orders = []; // ⚡ APENAS para comprovante e localização
 let currentView = 'home';
 let unreadNotifications = 0;
 let products = [];
 let categories = [];
 let lastUpdateId = 0;
+let messageIds = {};
 let processedCommands = new Set();
 let lastLocalizacaoData = null;
 let cartTimeout;
 let syncInterval;
 let taxaEntrega = 0;
 
-// ⚡ FUNÇÃO: Calcula distância entre duas coordenadas
-function calcularDistancia(lat1, lon1, lat2, lon2) {
-  const R = 6371e3;
-  const φ1 = lat1 * Math.PI/180;
-  const φ2 = lat2 * Math.PI/180;
-  const Δφ = (lat2-lat1) * Math.PI/180;
-  const Δλ = (lon2-lon1) * Math.PI/180;
-
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c;
-}
-
-// ⚡ FUNÇÃO: Calcula taxa de entrega baseada na distância
-function calcularTaxaEntrega(latUsuario, lonUsuario) {
-  const distancia = calcularDistancia(
-    LATITUDE_CENTRAL, LONGITUDE_CENTRAL,
-    latUsuario, lonUsuario
-  );
-  
-  if (distancia <= RAIO_BASE_METROS) {
-    return TAXA_MINIMA;
-  }
-  
-  const quantidadeRaios = Math.ceil(distancia / RAIO_BASE_METROS);
-  const taxaCalculada = TAXA_MINIMA + ((quantidadeRaios - 1) * TAXA_POR_RAIO);
-  
-  return Math.max(taxaCalculada, TAXA_MINIMA);
-}
-
+// ⚡ FUNÇÃO: Busca dados COMPLETOS da planilha (incluindo novos campos)
 async function carregarEstoque() {
   try {
     const response = await fetch(API_URL);
@@ -150,8 +120,9 @@ async function carregarEstoque() {
       
       const estoque = Number(linha.estoque) || 0;
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
-      const imagem = linha.imagem_url || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
+      const imagem = linha.imagem_url || linha.imagem || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
+      // ⚡ NOVOS CAMPOS DA PLANILHA
       const pedidoNumero = linha.pedido || '';
       const statusPedido = linha.status || '';
       const totalPedido = linha.total || 0;
@@ -171,11 +142,11 @@ async function carregarEstoque() {
           imagem: imagem,
           pedido: pedidoNumero,
           status: statusPedido,
-          total: totalPedido,
-          endereco: enderecoPedido,
-          telefone: telefonePedido,
-          itens: itensPedido,
-          data: dataPedido
+          total: totalPedido,          // ⬅️ NOVO
+          endereco: enderecoPedido,    // ⬅️ NOVO
+          telefone: telefonePedido,    // ⬅️ NOVO
+          itens: itensPedido,          // ⬅️ NOVO
+          data: dataPedido             // ⬅️ NOVO
         };
         
         products.push(produto);
@@ -195,7 +166,8 @@ async function carregarEstoque() {
     console.error('❌ Erro ao carregar planilha:', error);
   }
 }
-  
+
+// ⚡ FUNÇÃO: Salva na planilha com TODOS os dados
 async function salvarEstoque(produtoComPedido = null) {
   try {
     let dados;
@@ -271,6 +243,39 @@ async function salvarEstoque(produtoComPedido = null) {
   }
 }
 
+// ⚡ FUNÇÃO: Calcula distância entre duas coordenadas
+function calcularDistancia(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const φ1 = lat1 * Math.PI/180;
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c;
+}
+
+// ⚡ FUNÇÃO: Calcula taxa de entrega baseada na distância
+function calcularTaxaEntrega(latUsuario, lonUsuario) {
+  const distancia = calcularDistancia(
+    LATITUDE_CENTRAL, LONGITUDE_CENTRAL,
+    latUsuario, lonUsuario
+  );
+  
+  if (distancia <= RAIO_BASE_METROS) {
+    return TAXA_MINIMA;
+  }
+  
+  const quantidadeRaios = Math.ceil(distancia / RAIO_BASE_METROS);
+  const taxaCalculada = TAXA_MINIMA + ((quantidadeRaios - 1) * TAXA_POR_RAIO);
+  
+  return Math.max(taxaCalculada, TAXA_MINIMA);
+}
+
 async function sincronizarStatusPedidos() {
   try {
     const response = await fetch(API_URL);
@@ -283,19 +288,28 @@ async function sincronizarStatusPedidos() {
       const statusPlanilha = linha.status;
       
       if (pedidoNumero && statusPlanilha) {
+        // ⚡ Verifica se já existe notificação com este status
         const notificacaoExistente = notifications.find(n => 
           n.codigo == pedidoNumero && n.status === statusPlanilha
         );
         
         if (!notificacaoExistente) {
+          // Cria pedido virtual para notificação
+          const pedidoVirtual = {
+            codigo: pedidoNumero,
+            status: statusPlanilha,
+            total: linha.total || 0,
+            local: linha.endereco || '',
+            whatsapp: linha.telefone || '',
+            produtos: linha.itens ? [{nome: linha.itens, qtd: 1}] : [{nome: 'Produto', qtd: 1}],
+            data: linha.data || new Date().toLocaleString('pt-BR')
+          };
+          
           notifications.push({
             codigo: pedidoNumero,
             msg: `🔄 Pedido #${pedidoNumero} atualizado: ${statusPlanilha}`,
-            data: linha.data || new Date().toLocaleString('pt-BR'),
-            total: linha.total || 0,
-            endereco: linha.endereco || '',
-            telefone: linha.telefone || '',
-            itens: linha.itens || '',
+            data: pedidoVirtual.data,
+            notaFiscal: gerarNotaFiscal(pedidoVirtual),
             status: statusPlanilha
           });
           
@@ -340,6 +354,7 @@ async function checkTelegramUpdates() {
       data.result.forEach(update => {
         if (update.message && update.message.text) {
           const text = update.message.text;
+          if (text.startsWith('/repor')) { processarReporEstoque(update.message); }
           if (text.startsWith('/list')) { processarListEstoque(update.message); }
         }  
         
@@ -362,7 +377,104 @@ async function checkTelegramUpdates() {
 
 const pedidosBloqueados = new Set();
 
-// ⚡ FUNÇÃO ATUALIZADA: Busca TUDO da planilha, nada da memória
+// ⚡ FUNÇÃO: Busca pedido DIRETO da planilha para atualizar Telegram
+async function buscarPedidoDaPlanilha(codigoPedido) {
+  try {
+    await carregarEstoque();
+    
+    // Busca todos os produtos com este número de pedido
+    const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
+    
+    if (produtosDoPedido.length > 0) {
+      const primeiroProduto = produtosDoPedido[0];
+      
+      // Soma totais se múltiplos produtos
+      let totalCalculado = 0;
+      if (primeiroProduto.total && primeiroProduto.total !== '') {
+        totalCalculado = parseFloat(primeiroProduto.total) || 0;
+      } else {
+        totalCalculado = produtosDoPedido.reduce((sum, p) => sum + (p.preco || 0), 0);
+      }
+      
+      // Monta string de itens
+      let itensString = '';
+      if (primeiroProduto.itens && primeiroProduto.itens !== '') {
+        itensString = primeiroProduto.itens;
+      } else {
+        itensString = produtosDoPedido.map(p => `${p.nome} (x1)`).join(', ');
+      }
+      
+      return {
+        codigo: codigoPedido,
+        status: primeiroProduto.status || 'Pedido recebido',
+        total: totalCalculado,
+        local: primeiroProduto.endereco || 'Endereço não informado',
+        whatsapp: primeiroProduto.telefone || 'Telefone não informado',
+        produtos: produtosDoPedido.map(p => ({ nome: p.nome, qtd: 1 })),
+        data: primeiroProduto.data || new Date().toLocaleString('pt-BR')
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Erro ao buscar pedido da planilha:', error);
+    return null;
+  }
+}
+
+// ⚡ FUNÇÃO ATUALIZADA: Atualiza Telegram usando SOMENTE dados da planilha
+async function atualizarMensagemTelegramNoMomento(codigoPedido, novoStatus) {
+  try {
+    // 1. Busca pedido DIRETAMENTE da planilha
+    const pedido = await buscarPedidoDaPlanilha(codigoPedido);
+    
+    if (pedido) {
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [ { text: "✅ Pago", callback_data: `status_${codigoPedido}_pago` }, { text: "👨‍🍳 Preparando", callback_data: `status_${codigoPedido}_preparando` } ],
+          [ { text: "🚚 Entrega", callback_data: `status_${codigoPedido}_entrega` }, { text: "🎉 Entregue", callback_data: `status_${codigoPedido}_entregue` } ],
+          [ { text: "❌ Cancelar", callback_data: `status_${codigoPedido}_cancelado` } ]
+        ]
+      };
+      
+      const message = `📦 *PEDIDO #${pedido.codigo}* - ${novoStatus}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
+      
+      // Se já existe uma mensagem no Telegram, atualiza
+      if (messageIds[codigoPedido]) {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: CHAT_ID,
+            message_id: messageIds[codigoPedido],
+            text: message,
+            parse_mode: 'Markdown',
+            reply_markup: inlineKeyboard
+          })
+        });
+      } else {
+        // Se não existe, cria nova mensagem
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown',
+            reply_markup: inlineKeyboard
+          })
+        });
+      }
+      
+      console.log(`✅ Telegram atualizado para pedido #${codigoPedido}: ${novoStatus}`);
+    } else {
+      console.log(`⚠️ Pedido #${codigoPedido} não encontrado na planilha`);
+    }
+  } catch (error) {
+    console.error('❌ Erro ao atualizar mensagem Telegram:', error);
+  }
+}
+
 async function processarCallbackStatus(data, callbackObj) {
   const match = data.match(/status_(\d+)_(\w+)/);
   if (!match) return;
@@ -400,11 +512,11 @@ async function processarCallbackStatus(data, callbackObj) {
     pedidosBloqueados.add(chave);
   }
   
-  // ⚡ ATUALIZA STATUS NA PLANILHA (nada na memória)
-  await atualizarStatusPedidoNaPlanilha(codigo, textoStatus);
-  
-  // ⚡ ATUALIZA TELEGRAM COM DADOS DA PLANILHA
+  // ⚡ 1. ATUALIZA TELEGRAM USANDO DADOS DA PLANILHA
   await atualizarMensagemTelegramNoMomento(codigo, textoStatus);
+  
+  // ⚡ 2. ATUALIZA STATUS NA PLANILHA
+  await atualizarStatusNaPlanilha(codigo, textoStatus);
   
   if (callbackObj?.id) {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
@@ -419,13 +531,12 @@ async function processarCallbackStatus(data, callbackObj) {
   }
 }
 
-// ⚡ FUNÇÃO: Atualiza status na planilha
-async function atualizarStatusPedidoNaPlanilha(codigoPedido, novoStatus) {
+// ⚡ FUNÇÃO: Atualiza status NA PLANILHA (não na memória)
+async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
-    // Primeiro carrega todos os produtos
     await carregarEstoque();
     
-    // Encontra todos os produtos com este pedido
+    // Busca todos os produtos com este pedido
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
     if (produtosDoPedido.length > 0) {
@@ -436,99 +547,43 @@ async function atualizarStatusPedidoNaPlanilha(codigoPedido, novoStatus) {
       }
       
       console.log(`✅ Status atualizado na planilha para pedido #${codigoPedido}: ${novoStatus}`);
-    } else {
-      console.log(`⚠️ Pedido #${codigoPedido} não encontrado na planilha`);
     }
   } catch (error) {
     console.error('❌ Erro ao atualizar status na planilha:', error);
   }
 }
 
-// ⚡ FUNÇÃO ATUALIZADA: Busca TUDO da planilha para atualizar Telegram
-async function atualizarMensagemTelegramNoMomento(codigoPedido, novoStatus) {
+async function atualizarMensagemTelegram(codigo, pedido) {
+  const inlineKeyboard = {
+    inline_keyboard: [
+      [ { text: "✅ Pago", callback_data: `status_${codigo}_pago` }, { text: "👨‍🍳 Preparando", callback_data: `status_${codigo}_preparando` } ],
+      [ { text: "🚚 Entrega", callback_data: `status_${codigo}_entrega` }, { text: "🎉 Entregue", callback_data: `status_${codigo}_entregue` } ],
+      [ { text: "❌ Cancelar", callback_data: `status_${codigo}_cancelado` } ]
+    ]
+  };
+  
+  const message = `📦 *PEDIDO #${pedido.codigo}* - ${pedido.status}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
+  
   try {
-    // Carrega dados da planilha
-    await carregarEstoque();
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        message_id: messageIds[codigo],
+        text: message,
+        parse_mode: 'Markdown',
+        reply_markup: inlineKeyboard
+      })
+    });
     
-    // Busca todos os produtos com este pedido
-    const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
-    
-    if (produtosDoPedido.length > 0) {
-      // Pega dados do primeiro produto (todos têm as mesmas informações do pedido)
-      const produto = produtosDoPedido[0];
-      
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [ { text: "✅ Pago", callback_data: `status_${codigoPedido}_pago` }, { text: "👨‍🍳 Preparando", callback_data: `status_${codigoPedido}_preparando` } ],
-          [ { text: "🚚 Entrega", callback_data: `status_${codigoPedido}_entrega` }, { text: "🎉 Entregue", callback_data: `status_${codigoPedido}_entregue` } ],
-          [ { text: "❌ Cancelar", callback_data: `status_${codigoPedido}_cancelado` } ]
-        ]
-      };
-      
-      const message = `📦 *PEDIDO #${codigoPedido}* - ${novoStatus}\n\n💰 *Total:* R$ ${produto.total || 0}\n📍 *Endereço:* ${produto.endereco || ''}\n📱 *Telefone:* ${produto.telefone || ''}\n📋 *Itens:* ${produto.itens || ''}\n⏰ *Data:* ${produto.data || ''}`;
-      
-      // Busca mensagens existentes do Telegram para este pedido
-      // Primeiro tenta editar mensagens existentes
-      try {
-        const updates = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=100`);
-        const updatesData = await updates.json();
-        
-        if (updatesData.ok) {
-          let mensagemEncontrada = false;
-          
-          for (const update of updatesData.result) {
-            if (update.message && update.message.text && update.message.text.includes(`PEDIDO #${codigoPedido}`)) {
-              // Tenta editar a mensagem existente
-              await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: CHAT_ID,
-                  message_id: update.message.message_id,
-                  text: message,
-                  parse_mode: 'Markdown',
-                  reply_markup: inlineKeyboard
-                })
-              });
-              mensagemEncontrada = true;
-              break;
-            }
-          }
-          
-          // Se não encontrou mensagem existente, envia nova
-          if (!mensagemEncontrada) {
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: CHAT_ID,
-                text: message,
-                parse_mode: 'Markdown',
-                reply_markup: inlineKeyboard
-              })
-            });
-          }
-        }
-      } catch (telegramError) {
-        // Fallback: sempre envia nova mensagem
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'Markdown',
-            reply_markup: inlineKeyboard
-          })
-        });
-      }
-      
-      console.log(`✅ Telegram atualizado para pedido #${codigoPedido}: ${novoStatus}`);
-    } else {
-      console.log(`⚠️ Pedido #${codigoPedido} não encontrado na planilha para Telegram`);
+    const result = await response.json();
+    if (!result.ok) {
+      console.error('Erro ao atualizar mensagem:', result);
     }
   } catch (error) {
-    console.error('❌ Erro ao atualizar mensagem Telegram:', error);
+    console.error('Erro ao atualizar mensagem:', error);
   }
 }
 
@@ -574,6 +629,7 @@ function loadFromStorage() {
       if (now - data.timestamp < SESSION_DURATION) {
         cart = data.cart || [];
         notifications = data.notifications || [];
+        orders = data.orders || []; // ⚡ APENAS comprovante/localização
         unreadNotifications = data.unreadNotifications || 0;
         updateNotificationCounter();
         if (cart.length > 0) {
@@ -593,6 +649,7 @@ function saveToStorage() {
   const data = {
     cart: cart,
     notifications: notifications,
+    orders: orders, // ⚡ APENAS comprovante/localização
     unreadNotifications: unreadNotifications,
     timestamp: Date.now()
   };
@@ -602,6 +659,7 @@ function saveToStorage() {
 function clearStorage() {
   cart = [];
   notifications = [];
+  orders = []; // ⚡ APENAS comprovante/localização
   unreadNotifications = 0;
   localStorage.removeItem(STORAGE_KEY);
 }
@@ -655,6 +713,52 @@ function showHelpCategory(categoria){
   document.getElementById('view').innerHTML = html;
 }
 
+// ⚡ FUNÇÃO ATUALIZADA: Salva pedido na planilha com TODOS os dados
+async function salvarPedidoNaPlanilha(pedido) {
+  try {
+    await carregarEstoque();
+    
+    // Processa cada produto do pedido
+    for (const itemPedido of pedido.produtos) {
+      const produto = products.find(p => p.id === itemPedido.id);
+      if (produto) {
+        produto.estoque -= itemPedido.qtd;
+        produto.pedido = pedido.codigo;
+        produto.status = pedido.status;
+        
+        // ⚡ DADOS COMPLETOS para planilha
+        const dadosParaPlanilha = {
+          id: produto.id,
+          categoria: produto.categoria || '',
+          produto: produto.nome || '',
+          preco: produto.preco || 0,
+          estoque: produto.estoque || 0,
+          imagem: produto.imagem || '',
+          descricao: produto.descricao || '',
+          pedido: pedido.codigo || '',
+          status: pedido.status || '',
+          total: pedido.total || 0,
+          endereco: pedido.local || '',
+          telefone: pedido.whatsapp || '',
+          itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', '),
+          data: pedido.data || ''
+        };
+        
+        // Salva na planilha
+        await salvarEstoque(dadosParaPlanilha);
+        
+        if (produto.estoque <= 0) {
+          alertaEstoqueZerado(produto);
+        }
+      }
+    }
+    
+    console.log('✅ Pedido salvo na planilha com dados completos:', pedido.codigo);
+  } catch (error) {
+    console.error('❌ Erro ao salvar pedido na planilha:', error);
+  }
+}
+
 async function sendTelegramNotification(pedido) {
   const inlineKeyboard = {
     inline_keyboard: [
@@ -676,46 +780,69 @@ async function sendTelegramNotification(pedido) {
     
     const messageResult = await messageResponse.json();
     
+    if (messageResult.ok && messageResult.result) {
+      messageIds[pedido.codigo] = messageResult.result.message_id;
+    }
+    
+    // ⚡ SALVA PEDIDO NA PLANILHA (com todos os dados)
+    await salvarPedidoNaPlanilha(pedido);
+    
+    // ⚡ LOCALIZAÇÃO e COMPROVANTE ficam apenas na MEMÓRIA (orders)
+    if (pedido.mapaUrl) {
+      await sendLocalizacaoToTelegram(pedido);
+    }
+    
+    if (pedido.comprovante) {
+      await sendComprovanteToTelegram(pedido);
+    }
+    
     if (!messageResult.ok) {
       console.error('Erro Telegram:', messageResult);
     }
-    
-    await salvarPedidoNaPlanilha(pedido);
-    
   } catch (error) {
     console.error('Erro ao conectar com Telegram:', error);
   }
 }
 
-async function salvarPedidoNaPlanilha(pedido) {
+async function sendLocalizacaoToTelegram(pedido) {
   try {
-    await carregarEstoque();
+    const message = `📍 *LOCALIZAÇÃO DO PEDIDO #${pedido.codigo}*\n\n🗺️ [Abrir no Google Maps](${pedido.mapaUrl})`;
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: 'Markdown' })
+    });
+  } catch (error) {
+    console.error('Erro ao enviar localização:', error);
+  }
+}
+
+async function sendComprovanteToTelegram(pedido) {
+  try {
+    const base64Data = pedido.comprovante.split(',')[1];
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
     
-    // Processa cada produto do pedido
-    for (const itemPedido of pedido.produtos) {
-      const produto = products.find(p => p.id === itemPedido.id);
-      if (produto) {
-        produto.estoque -= itemPedido.qtd;
-        produto.pedido = pedido.codigo;
-        produto.status = pedido.status;
-        produto.total = pedido.total;
-        produto.endereco = pedido.local;
-        produto.telefone = pedido.whatsapp;
-        produto.itens = pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ');
-        produto.data = pedido.data;
-        
-        // Salva na planilha
-        await salvarEstoque(produto);
-        
-        if (produto.estoque <= 0) {
-          alertaEstoqueZerado(produto);
-        }
-      }
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
     
-    console.log('✅ Pedido salvo na planilha com dados completos:', pedido.codigo);
+    const blob = new Blob([bytes], { type: pedido.comprovanteTipo });
+    const formData = new FormData();
+    formData.append('chat_id', CHAT_ID);
+    formData.append('document', blob, pedido.comprovanteNome);
+    formData.append('caption', `📎 COMPROVANTE PEDIDO #${pedido.codigo}\n💳 Valor: R$ ${pedido.total.toFixed(2)}`);
+    
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`;
+    const response = await fetch(url, { method: 'POST', body: formData });
+    const result = await response.json();
+    
+    if (!result.ok) {
+      console.error('Erro ao enviar comprovante:', result);
+    }
   } catch (error) {
-    console.error('❌ Erro ao salvar pedido na planilha:', error);
+    console.error('Erro ao enviar comprovante para Telegram:', error);
   }
 }
 
@@ -732,86 +859,65 @@ function gerarNotaFiscal(pedido) {
 }
 
 function baixarNotaFiscalIndividual(codigo) {
-  try {
-    // Busca da planilha
-    const produtoComPedido = products.find(p => p.pedido == codigo);
-    
-    if (!produtoComPedido) { 
-      alert('Pedido não encontrado na planilha!'); 
-      return; 
-    }
-    
-    const pedido = {
-      codigo: codigo,
-      data: produtoComPedido.data || '',
-      status: produtoComPedido.status || '',
-      total: parseFloat(produtoComPedido.total) || 0,
-      whatsapp: produtoComPedido.telefone || '',
-      local: produtoComPedido.endereco || '',
-      produtos: produtoComPedido.itens ? 
-        [{ 
-          nome: produtoComPedido.itens.split('(')[0].trim() || 'Produto', 
-          qtd: parseInt(produtoComPedido.itens.match(/x(\d+)/)?.[1]) || 1,
-          preco: produtoComPedido.preco || 0
-        }] : 
-        [{ nome: 'Produto', qtd: 1, preco: 0 }]
-    };
+  // ⚡ Busca pedido da memória (orders) APENAS para comprovante/localização
+  let pedido = orders.find(o => o.codigo === codigo);
   
-    const notaHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-        <div style="text-align: center; border-bottom: 2px solid #3a0060; padding-bottom: 15px; margin-bottom: 20px;">
-          <h1 style="color: #3a0060; margin: 0;">🍕 NOTA FISCAL</h1>
-          <p style="margin: 5px 0;"><strong>Delivery Express</strong></p>
-          <p style="margin: 5px 0; font-size: 14px;">CNPJ: 12.345.678/0001-90</p>
-        </div>
-        <div style="margin-bottom: 15px;">
-          <p><strong>Pedido:</strong> #${pedido.codigo}</p>
-          <p><strong>Data:</strong> ${pedido.data}</p>
-          <p><strong>Status:</strong> ${pedido.status}</p>
-        </div>
-        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
-          <thead>
-            <tr style="background: #f5f5f5;">
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qtd</th>
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Valor</th>
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pedido.produtos.map(item => `
-              <tr>
-                <td style="border: 1px solid #ddd; padding: 8px;">${item.nome}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.qtd}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${item.preco.toFixed(2)}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${(item.preco * item.qtd).toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div style="text-align: right; font-size: 18px; font-weight: bold; color: #3a0060; margin-top: 20px;">
-          TOTAL: R$ ${pedido.total.toFixed(2)}
-        </div>
-        <div style="margin-top: 20px; font-size: 12px; color: #666; text-align: center; border-top: 1px solid #ddd; padding-top: 15px;">
-          <p>Obrigado pela preferência! 🎉</p>
-          <p>Telefone: (11) 99999-9999 | delivery@express.com</p>
-        </div>
-      </div>
-    `;
-    
-    const blob = new Blob([notaHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `nota-fiscal-${pedido.codigo}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('Erro ao gerar nota fiscal:', error);
-    alert('Erro ao gerar nota fiscal!');
+  if (!pedido) {
+    alert('Pedido não encontrado na memória local!');
+    return;
   }
+  
+  const notaHTML = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+      <div style="text-align: center; border-bottom: 2px solid #3a0060; padding-bottom: 15px; margin-bottom: 20px;">
+        <h1 style="color: #3a0060; margin: 0;">🍕 NOTA FISCAL</h1>
+        <p style="margin: 5px 0;"><strong>Delivery Express</strong></p>
+        <p style="margin: 5px 0; font-size: 14px;">CNPJ: 12.345.678/0001-90</p>
+      </div>
+      <div style="margin-bottom: 15px;">
+        <p><strong>Pedido:</strong> #${pedido.codigo}</p>
+        <p><strong>Data:</strong> ${pedido.data}</p>
+        <p><strong>Status:</strong> ${pedido.status}</p>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <thead>
+          <tr style="background: #f5f5f5;">
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qtd</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Valor</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pedido.produtos.map(item => `
+            <tr>
+              <td style="border: 1px solid #ddd; padding: 8px;">${item.nome}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.qtd}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${item.preco.toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${(item.preco * item.qtd).toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div style="text-align: right; font-size: 18px; font-weight: bold; color: #3a0060; margin-top: 20px;">
+        TOTAL: R$ ${pedido.total.toFixed(2)}
+      </div>
+      <div style="margin-top: 20px; font-size: 12px; color: #666; text-align: center; border-top: 1px solid #ddd; padding-top: 15px;">
+        <p>Obrigado pela preferência! 🎉</p>
+        <p>Telefone: (11) 99999-9999 | delivery@express.com</p>
+      </div>
+    </div>
+  `;
+  
+  const blob = new Blob([notaHTML], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `nota-fiscal-${pedido.codigo}.html`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function goBack(){
@@ -1169,15 +1275,14 @@ function showUploadComprovante(localizacaoData, descricao) {
         status: 'Pedido recebido - Aguardando confirmação do pagamento'
       };
       
-      // ⚡ Salva notificação local
+      // ⚡ APENAS para comprovante/localização na memória
+      orders.push(pedido);
+      
       notifications.push({ 
         codigo: codigoPedido, 
         msg: `Pedido #${codigoPedido} realizado - R$ ${totalComTaxa.toFixed(2)} (Taxa entrega: R$ ${taxaEntregaValor.toFixed(2)})`, 
         data: pedido.data, 
-        total: totalComTaxa,
-        endereco: localizacao,
-        telefone: whatsapp,
-        itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', '),
+        notaFiscal: gerarNotaFiscal(pedido), 
         status: pedido.status 
       });
       
