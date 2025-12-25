@@ -73,7 +73,7 @@ const STORAGE_KEY = 'delivery_app_data';
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const PLANILHA_ID = '1Ih4QIhWBfnV5L12uc0kyBabF7zCk_iKJoXyyjcxlIss';
 const API_URL = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwx5MnOyOQ0Z0bPjY--3Fh4ElgoqsR6AWO1etUFCSUr9DPJ0GqhUoVKcdcFPjUkduT4/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzmSOrK2w_kgsJRdg5L17yZVML3THVyaJMI9nvT_w7L1Sljn9Hd_N_ULtS1_j5RQE7w/exec';
 
 const LATITUDE_CENTRAL = -4.169490;
 const LONGITUDE_CENTRAL = -38.917917;
@@ -594,48 +594,48 @@ async function salvarPedidoNaPlanilha(pedido) {
   try {
     await carregarEstoque();
     
-    const dadosParaSalvar = [];
-    
-    for (const itemPedido of pedido.produtos) {
-      const produto = products.find(p => p.id === itemPedido.id);
-      if (produto) {
-        produto.estoque -= itemPedido.qtd;
-        produto.pedido = pedido.codigo;
-        produto.status = pedido.status;
-        produto.total = pedido.total;
-        produto.endereco = pedido.local;
-        produto.telefone = pedido.whatsapp;
-        produto.itens = pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ');
-        produto.data = pedido.data;
-        
-        const dadosProduto = {
-          id: String(produto.id),
-          categoria: produto.categoria || '',
-          produto: produto.nome || '',
-          preço: String(produto.preco || 0),
-          estoque: String(produto.estoque || 0),
-          imagem: produto.imagem || '',
-          descrição: produto.descricao || '',
-          pedido: pedido.codigo || '',
-          status: pedido.status || '',
-          total: String(pedido.total || 0),
-          endereco: pedido.local || '',
-          telefone: pedido.whatsapp || '',
-          itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', '),
-          data: pedido.data || ''
-        };
-        
-        dadosParaSalvar.push(dadosProduto);
-        
-        if (produto.estoque <= 0) {
-          alertaEstoqueZerado(produto);
-        }
-      }
-    }
+    // Prepara dados para criar UMA LINHA por produto no pedido
+    // Cada produto do pedido gera uma linha separada na planilha
+    const dadosParaSalvar = pedido.produtos.map(itemPedido => {
+      const produtoOriginal = products.find(p => p.id === itemPedido.id);
+      
+      // Constrói string de itens para este produto específico
+      const itensString = pedido.produtos.map(p => {
+        const produtoInfo = products.find(prod => prod.id === p.id);
+        const nomeProduto = produtoInfo ? produtoInfo.nome : p.nome;
+        return `${nomeProduto} (x${p.qtd})`;
+      }).join(', ');
+      
+      return {
+        id: String(itemPedido.id),
+        categoria: produtoOriginal ? produtoOriginal.categoria : '',
+        produto: produtoOriginal ? produtoOriginal.nome : itemPedido.nome,
+        preço: String(produtoOriginal ? produtoOriginal.preco : itemPedido.preco),
+        estoque: String(produtoOriginal ? produtoOriginal.estoque - itemPedido.qtd : 0),
+        imagem: produtoOriginal ? produtoOriginal.imagem : '',
+        descrição: produtoOriginal ? produtoOriginal.descricao : '',
+        pedido: pedido.codigo || '',
+        status: pedido.status || '',
+        total: String(pedido.total || 0),
+        endereco: pedido.local || '',
+        telefone: pedido.whatsapp || '',
+        itens: itensString, // Todos os itens do pedido
+        data: pedido.data || ''
+      };
+    });
     
     await salvarEstoque(dadosParaSalvar);
     
-    console.log('✅ Pedido salvo na planilha:', pedido.codigo, 'com', dadosParaSalvar.length, 'produtos');
+    console.log('✅ Pedido salvo na planilha:', pedido.codigo, 'com', dadosParaSalvar.length, 'linhas');
+    
+    // Verifica estoque zerado
+    pedido.produtos.forEach(item => {
+      const produto = products.find(p => p.id === item.id);
+      if (produto && (produto.estoque - item.qtd) <= 0) {
+        alertaEstoqueZerado(produto);
+      }
+    });
+    
   } catch (error) {
     console.error('❌ Erro ao salvar pedido na planilha:', error);
   }
