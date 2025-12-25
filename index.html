@@ -72,8 +72,8 @@ const CHAT_ID = '1232955171';
 const STORAGE_KEY = 'delivery_app_data';
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const PLANILHA_ID = '1Ih4QIhWBfnV5L12uc0kyBabF7zCk_iKJoXyyjcxlIss';
-const API_URL_PRODUTOS = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;  // cadastro
-const API_URL_PEDIDOS = `https://opensheet.elk.sh/${PLANILHA_ID}/2`;   // pedido
+const API_URL_PRODUTOS = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
+const API_URL_PEDIDOS = `https://opensheet.elk.sh/${PLANILHA_ID}/2`;
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxz7IapzHB-DwjStvdfl8v9hfGJU4ASlvcbwLg691TbQviEDytBB0vo9XpoNjWZznug/exec';
 
 const LATITUDE_CENTRAL = -4.169490;
@@ -96,7 +96,6 @@ let lastLocalizacaoData = null;
 let cartTimeout;
 let syncInterval;
 let taxaEntrega = 0;
-let verificarStatusInterval;
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
@@ -129,7 +128,6 @@ function calcularTaxaEntrega(latUsuario, lonUsuario) {
   return Math.max(taxaCalculada, TAXA_MINIMA);
 }
 
-
 async function carregarEstoque() {
   try {
     // Ler DAS DUAS ABAS
@@ -141,13 +139,10 @@ async function carregarEstoque() {
     const produtosRaw = await responseProdutos.json();
     const pedidosRaw = await responsePedidos.json();
     
-    console.log('📦 Produtos raw:', produtosRaw.length);
-    console.log('📦 Pedidos raw:', pedidosRaw);
-    
     products = [];
     categories = [];
     
-    // Criar um MAPA de pedidos para fácil acesso
+    // Criar MAPA de pedidos para acesso rápido
     const mapaPedidos = {};
     pedidosRaw.forEach(pedido => {
       if (pedido.pedido) {
@@ -162,9 +157,7 @@ async function carregarEstoque() {
       }
     });
     
-    console.log('🗺️ Mapa de pedidos:', mapaPedidos);
-    
-    // Processar cada produto
+    // Processar CADA produto
     produtosRaw.forEach(linha => {
       const id = Number(linha.id) || 0;
       const categoria = linha.categoria || linha.Categoria || 'Sem Categoria';
@@ -181,35 +174,19 @@ async function carregarEstoque() {
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
       const imagem = linha.imagem || linha.imagem_url || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
-      // BUSCAR PEDIDO - AGORA PROCURA PELO ID DO PEDIDO DIRETO
+      // BUSCAR PEDIDO PELO NÚMERO DO PEDIDO (834, 788, etc)
       let pedidoData = {};
-      let pedidoEncontrado = null;
-      
-      // Primeiro tenta encontrar pedido pelo número no campo "pedido" do produto
       const pedidoNumeroProduto = linha.pedido || '';
       
       if (pedidoNumeroProduto && mapaPedidos[pedidoNumeroProduto]) {
-        pedidoEncontrado = mapaPedidos[pedidoNumeroProduto];
-      } else {
-        // Se não encontrar, procura em todos os pedidos
-        for (const [numeroPedido, dadosPedido] of Object.entries(mapaPedidos)) {
-          if (dadosPedido.itens && dadosPedido.itens.toString().includes(id.toString())) {
-            pedidoEncontrado = dadosPedido;
-            pedidoData.pedido = numeroPedido;
-            break;
-          }
-        }
-      }
-      
-      if (pedidoEncontrado) {
         pedidoData = {
-          pedido: pedidoNumeroProduto || Object.keys(mapaPedidos).find(key => mapaPedidos[key] === pedidoEncontrado) || '',
-          status: pedidoEncontrado.status,
-          total: pedidoEncontrado.total,
-          endereco: pedidoEncontrado.endereco,
-          telefone: pedidoEncontrado.telefone,
-          itens: pedidoEncontrado.itens,
-          data: pedidoEncontrado.data
+          pedido: pedidoNumeroProduto,
+          status: mapaPedidos[pedidoNumeroProduto].status,
+          total: mapaPedidos[pedidoNumeroProduto].total,
+          endereco: mapaPedidos[pedidoNumeroProduto].endereco,
+          telefone: mapaPedidos[pedidoNumeroProduto].telefone,
+          itens: mapaPedidos[pedidoNumeroProduto].itens,
+          data: mapaPedidos[pedidoNumeroProduto].data
         };
       }
       
@@ -239,7 +216,8 @@ async function carregarEstoque() {
       }
     });
 
-    console.log('✅ Produtos finais:', products);
+    console.log('✅ Produtos carregados:', products.length);
+    console.log('✅ Pedidos no mapa:', Object.keys(mapaPedidos).length);
     
     if (currentView === 'categories' || currentView === 'category-products') {
       showCategories();
@@ -314,7 +292,25 @@ async function criarNovaNotificacaoParaStatus(codigoPedido, novoStatus) {
       
       console.log(`✅ Nova notificação criada: Pedido #${codigoPedido} - ${novoStatus}`);
     } else {
-      console.log(`⚠️ Pedido #${codigoPedido} não encontrado`);
+      // Se não encontrar produto, cria notificação básica
+      const novaNotificacao = {
+        codigo: codigoPedido,
+        msg: `Pedido #${codigoPedido}: ${novoStatus}`,
+        data: new Date().toLocaleString('pt-BR'),
+        status: novoStatus,
+        total: 0,
+        endereco: '',
+        telefone: '',
+        itens: '',
+        lida: false
+      };
+      
+      notifications.unshift(novaNotificacao);
+      unreadNotifications++;
+      updateNotificationCounter();
+      saveToStorage();
+      
+      console.log(`✅ Notificação básica criada: Pedido #${codigoPedido}`);
     }
   } catch (error) {
     console.error('❌ Erro ao criar notificação:', error);
@@ -483,38 +479,15 @@ async function processarCallbackStatus(data, callbackObj) {
 
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
-    // Carregar dados atualizados para ter certeza
+    // Primeiro carrega dados para ver se o pedido existe
     await carregarEstoque();
     
-    // Criar dados para atualizar
-    const dadosParaAtualizar = [];
-    
-    // Encontrar TODOS os produtos deste pedido
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
-    if (produtosDoPedido.length === 0) {
-      console.log(`⚠️ Pedido #${codigoPedido} não encontrado nos produtos`);
-      
-      // Se não encontrar, cria um registro mínimo
-      dadosParaAtualizar.push({
-        id: '0',
-        categoria: 'Pedido',
-        produto: `Pedido #${codigoPedido}`,
-        preco: 0,
-        estoque: 0,
-        imagem: '',
-        descricao: 'Pedido do cliente',
-        pedido: codigoPedido,
-        status: novoStatus,
-        total: 0,
-        endereco: '',
-        telefone: '',
-        itens: 'Pedido',
-        data: new Date().toLocaleString('pt-BR'),
-        qtd: 1
-      });
-    } else {
-      // Para cada produto do pedido
+    let dadosParaAtualizar = [];
+    
+    if (produtosDoPedido.length > 0) {
+      // Se encontrar produtos do pedido, atualiza todos
       produtosDoPedido.forEach(produto => {
         dadosParaAtualizar.push({
           id: String(produto.id),
@@ -524,8 +497,8 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
           estoque: produto.estoque || 0,
           imagem: produto.imagem || '',
           descricao: produto.descricao || '',
-          pedido: codigoPedido,
-          status: novoStatus,
+          pedido: codigoPedido || '',
+          status: novoStatus || '',
           total: produto.total || 0,
           endereco: produto.endereco || '',
           telefone: produto.telefone || '',
@@ -534,18 +507,41 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
           qtd: 1
         });
       });
+    } else {
+      // Se NÃO encontrar, cria um registro especial para o pedido
+      dadosParaAtualizar.push({
+        id: '0',
+        categoria: 'Pedido',
+        produto: `Pedido #${codigoPedido}`,
+        preco: 0,
+        estoque: 0,
+        imagem: '',
+        descricao: `Status atualizado para: ${novoStatus}`,
+        pedido: codigoPedido,
+        status: novoStatus,
+        total: 0,
+        endereco: 'Endereço do cliente',
+        telefone: 'Telefone do cliente',
+        itens: `Pedido #${codigoPedido}`,
+        data: new Date().toLocaleString('pt-BR'),
+        qtd: 1
+      });
     }
     
-    // Enviar para o Apps Script
+    // Envia para atualização
     if (dadosParaAtualizar.length > 0) {
       await salvarEstoque(dadosParaAtualizar);
-      console.log(`✅ Status atualizado: Pedido #${codigoPedido} - ${novoStatus} (${dadosParaAtualizar.length} registros)`);
+      console.log(`✅ Status atualizado na planilha: Pedido #${codigoPedido} - ${novoStatus} (${dadosParaAtualizar.length} registros)`);
+      
+      // Recarrega para ter dados atualizados
+      await carregarEstoque();
     }
     
   } catch (error) {
     console.error('❌ Erro ao atualizar status na planilha:', error);
   }
-  }
+}
+
 async function alertaEstoqueZerado(produto) {
   const mensagem = `🚨 *ESTOQUE ZERADO!*\n\n📦 ${produto.nome} está ESGOTADO!\n`;
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -572,7 +568,6 @@ function iniciarSincronizacao() {
   if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(async () => {
     await carregarEstoque();
-    await verificarAtualizacoesStatus();
   }, 10000);
 }
 
