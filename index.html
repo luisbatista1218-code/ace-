@@ -75,7 +75,6 @@ const PLANILHA_ID = '1Ih4QIhWBfnV5L12uc0kyBabF7zCk_iKJoXyyjcxlIss';
 const API_URL = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwx5MnOyOQ0Z0bPjY--3Fh4ElgoqsR6AWO1etUFCSUr9DPJ0GqhUoVKcdcFPjUkduT4/exec';
 
-// ⚡ CONSTANTES PARA CÁLCULO DA TAXA DE ENTREGA
 const LATITUDE_CENTRAL = -4.169490;
 const LONGITUDE_CENTRAL = -38.917917;
 const RAIO_BASE_METROS = 100;
@@ -84,7 +83,7 @@ const TAXA_MINIMA = 5.00;
 
 let cart = [];
 let notifications = [];
-let orders = []; // ⚡ APENAS para comprovante e localização
+let orders = [];
 let currentView = 'home';
 let unreadNotifications = 0;
 let products = [];
@@ -97,7 +96,6 @@ let cartTimeout;
 let syncInterval;
 let taxaEntrega = 0;
 
-// ⚡ FUNÇÃO: Calcula distância entre duas coordenadas
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
   const φ1 = lat1 * Math.PI/180;
@@ -113,7 +111,6 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// ⚡ FUNÇÃO: Calcula taxa de entrega baseada na distância
 function calcularTaxaEntrega(latUsuario, lonUsuario) {
   const distancia = calcularDistancia(
     LATITUDE_CENTRAL, LONGITUDE_CENTRAL,
@@ -130,7 +127,6 @@ function calcularTaxaEntrega(latUsuario, lonUsuario) {
   return Math.max(taxaCalculada, TAXA_MINIMA);
 }
 
-// ⚡ FUNÇÃO PRINCIPAL: Busca TUDO da planilha
 async function carregarEstoque() {
   try {
     const response = await fetch(API_URL);
@@ -155,7 +151,6 @@ async function carregarEstoque() {
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
       const imagem = linha.imagem_url || linha.imagem || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
-      // ⚡ CAMPOS DO PEDIDO DA PLANILHA
       const pedidoNumero = linha.pedido || '';
       const statusPedido = linha.status || '';
       const totalPedido = linha.total || 0;
@@ -200,7 +195,6 @@ async function carregarEstoque() {
   }
 }
 
-// ⚡ FUNÇÃO: Salva na planilha
 async function salvarEstoque(produtoComPedido = null) {
   try {
     let dados;
@@ -276,44 +270,31 @@ async function salvarEstoque(produtoComPedido = null) {
   }
 }
 
-// ⚡ FUNÇÃO: Atualiza notificações para PEDIDO ATUAL
-async function atualizarNotificacaoParaPedidoAtual(codigoPedido, novoStatus) {
+async function criarNovaNotificacaoParaStatus(codigoPedido, novoStatus) {
   try {
-    // Busca produto ATUAL deste pedido
     await carregarEstoque();
     const produtoDoPedido = products.find(p => p.pedido == codigoPedido);
     
     if (produtoDoPedido) {
-      // Verifica se JÁ existe notificação para este pedido
-      const notificacaoIndex = notifications.findIndex(n => n.codigo == codigoPedido);
+      const novaNotificacao = {
+        codigo: codigoPedido,
+        msg: `Pedido #${codigoPedido}: ${novoStatus}`,
+        data: new Date().toLocaleString('pt-BR'),
+        status: novoStatus,
+        total: parseFloat(produtoDoPedido.total) || 0,
+        endereco: produtoDoPedido.endereco || '',
+        telefone: produtoDoPedido.telefone || '',
+        itens: produtoDoPedido.itens || '',
+        lida: false
+      };
       
-      if (notificacaoIndex !== -1) {
-        // ATUALIZA notificação existente
-        notifications[notificacaoIndex].status = novoStatus;
-        notifications[notificacaoIndex].msg = `Pedido #${codigoPedido}: ${novoStatus}`;
-        
-        // Marca como não lida
-        const notifLida = notifications[notificacaoIndex].lida;
-        if (!notifLida) {
-          unreadNotifications++;
-        }
-      } else {
-        // CRIA nova notificação
-        notifications.push({
-          codigo: codigoPedido,
-          msg: `Pedido #${codigoPedido}: ${novoStatus}`,
-          data: produtoDoPedido.data || new Date().toLocaleString('pt-BR'),
-          status: novoStatus,
-          total: produtoDoPedido.total || 0,
-          endereco: produtoDoPedido.endereco || '',
-          telefone: produtoDoPedido.telefone || '',
-          itens: produtoDoPedido.itens || '',
-          lida: false
-        });
-        
-        unreadNotifications++;
+      notifications.unshift(novaNotificacao);
+      
+      if (notifications.length > 50) {
+        notifications = notifications.slice(0, 50);
       }
       
+      unreadNotifications++;
       updateNotificationCounter();
       saveToStorage();
       
@@ -321,10 +302,10 @@ async function atualizarNotificacaoParaPedidoAtual(codigoPedido, novoStatus) {
         showNotifs();
       }
       
-      console.log(`✅ Notificação atualizada: Pedido #${codigoPedido} - ${novoStatus}`);
+      console.log(`✅ Nova notificação criada: Pedido #${codigoPedido} - ${novoStatus}`);
     }
   } catch (error) {
-    console.error('❌ Erro ao atualizar notificação:', error);
+    console.error('❌ Erro ao criar notificação:', error);
   }
 }
 
@@ -372,12 +353,10 @@ async function checkTelegramUpdates() {
 
 const pedidosBloqueados = new Set();
 
-// ⚡ FUNÇÃO: Busca pedido ATUAL da planilha
 async function buscarPedidoAtualDaPlanilha(codigoPedido) {
   try {
     await carregarEstoque();
     
-    // Busca produto ATUAL deste pedido
     const produtoDoPedido = products.find(p => p.pedido == codigoPedido);
     
     if (produtoDoPedido) {
@@ -399,10 +378,8 @@ async function buscarPedidoAtualDaPlanilha(codigoPedido) {
   }
 }
 
-// ⚡ FUNÇÃO: Atualiza MENSAGEM EXISTENTE no Telegram
 async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
   try {
-    // Busca pedido ATUAL da planilha
     const pedido = await buscarPedidoAtualDaPlanilha(codigoPedido);
     
     if (pedido && messageIds[codigoPedido]) {
@@ -416,7 +393,6 @@ async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
       
       const message = `📦 *PEDIDO #${pedido.codigo}* - ${novoStatus}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
       
-      // ATUALIZA MENSAGEM EXISTENTE (não cria nova)
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -436,7 +412,6 @@ async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
   }
 }
 
-// ⚡ FUNÇÃO: Processa callback do Telegram
 async function processarCallbackStatus(data, callbackObj) {
   const match = data.match(/status_(\d+)_(\w+)/);
   if (!match) return;
@@ -474,14 +449,11 @@ async function processarCallbackStatus(data, callbackObj) {
     pedidosBloqueados.add(chave);
   }
   
-  // 1. ATUALIZA STATUS NA PLANILHA
   await atualizarStatusNaPlanilha(codigo, textoStatus);
   
-  // 2. ATUALIZA MENSAGEM EXISTENTE no Telegram
   await atualizarMensagemTelegramExistente(codigo, textoStatus);
   
-  // 3. ATUALIZA NOTIFICAÇÃO para PEDIDO ATUAL
-  await atualizarNotificacaoParaPedidoAtual(codigo, textoStatus);
+  await criarNovaNotificacaoParaStatus(codigo, textoStatus);
   
   if (callbackObj?.id) {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
@@ -496,16 +468,13 @@ async function processarCallbackStatus(data, callbackObj) {
   }
 }
 
-// ⚡ FUNÇÃO: Atualiza status NA PLANILHA
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
     await carregarEstoque();
     
-    // Busca TODOS os produtos deste pedido
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
     if (produtosDoPedido.length > 0) {
-      // Atualiza CADA produto na planilha
       for (const produto of produtosDoPedido) {
         produto.status = novoStatus;
         await salvarEstoque(produto);
@@ -515,41 +484,6 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
     }
   } catch (error) {
     console.error('❌ Erro ao atualizar status na planilha:', error);
-  }
-}
-
-// ⚡ FUNÇÃO: Atualiza mensagem Telegram (para quando usuário está online)
-async function atualizarMensagemTelegram(codigo, pedido) {
-  const inlineKeyboard = {
-    inline_keyboard: [
-      [ { text: "✅ Pago", callback_data: `status_${codigo}_pago` }, { text: "👨‍🍳 Preparando", callback_data: `status_${codigo}_preparando` } ],
-      [ { text: "🚚 Entrega", callback_data: `status_${codigo}_entrega` }, { text: "🎉 Entregue", callback_data: `status_${codigo}_entregue` } ],
-      [ { text: "❌ Cancelar", callback_data: `status_${codigo}_cancelado` } ]
-    ]
-  };
-  
-  const message = `📦 *PEDIDO #${pedido.codigo}* - ${pedido.status}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
-  
-  try {
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        message_id: messageIds[codigo],
-        text: message,
-        parse_mode: 'Markdown',
-        reply_markup: inlineKeyboard
-      })
-    });
-    
-    const result = await response.json();
-    if (!result.ok) {
-      console.error('Erro ao atualizar mensagem:', result);
-    }
-  } catch (error) {
-    console.error('Erro ao atualizar mensagem:', error);
   }
 }
 
@@ -594,7 +528,7 @@ function loadFromStorage() {
       if (now - data.timestamp < SESSION_DURATION) {
         cart = data.cart || [];
         notifications = data.notifications || [];
-        orders = data.orders || []; // ⚡ APENAS comprovante/localização
+        orders = data.orders || [];
         unreadNotifications = data.unreadNotifications || 0;
         updateNotificationCounter();
         if (cart.length > 0) {
@@ -614,7 +548,7 @@ function saveToStorage() {
   const data = {
     cart: cart,
     notifications: notifications,
-    orders: orders, // ⚡ APENAS comprovante/localização
+    orders: orders,
     unreadNotifications: unreadNotifications,
     timestamp: Date.now()
   };
@@ -624,7 +558,7 @@ function saveToStorage() {
 function clearStorage() {
   cart = [];
   notifications = [];
-  orders = []; // ⚡ APENAS comprovante/localização
+  orders = [];
   unreadNotifications = 0;
   localStorage.removeItem(STORAGE_KEY);
 }
@@ -678,12 +612,10 @@ function showHelpCategory(categoria){
   document.getElementById('view').innerHTML = html;
 }
 
-// ⚡ FUNÇÃO: Salva pedido na planilha
 async function salvarPedidoNaPlanilha(pedido) {
   try {
     await carregarEstoque();
     
-    // Processa CADA produto do pedido
     for (const itemPedido of pedido.produtos) {
       const produto = products.find(p => p.id === itemPedido.id);
       if (produto) {
@@ -691,7 +623,6 @@ async function salvarPedidoNaPlanilha(pedido) {
         produto.pedido = pedido.codigo;
         produto.status = pedido.status;
         
-        // ⚡ DADOS COMPLETOS para planilha
         const dadosParaPlanilha = {
           id: produto.id,
           categoria: produto.categoria || '',
@@ -709,7 +640,6 @@ async function salvarPedidoNaPlanilha(pedido) {
           data: pedido.data || ''
         };
         
-        // Salva na planilha
         await salvarEstoque(dadosParaPlanilha);
         
         if (produto.estoque <= 0) {
@@ -725,6 +655,8 @@ async function salvarPedidoNaPlanilha(pedido) {
 }
 
 async function sendTelegramNotification(pedido) {
+  const statusInicial = "Pedido recebido - Aguardando confirmação do pagamento";
+  
   const inlineKeyboard = {
     inline_keyboard: [
       [ { text: "✅ Pago", callback_data: `status_${pedido.codigo}_pago` }, { text: "👨‍🍳 Preparando", callback_data: `status_${pedido.codigo}_preparando` } ],
@@ -733,14 +665,19 @@ async function sendTelegramNotification(pedido) {
     ]
   };
   
-  const message = `📦 *PEDIDO #${pedido.codigo}* - ${pedido.status}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
+  const message = `📦 *PEDIDO #${pedido.codigo}* - ${pedido.status || statusInicial}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
   
   try {
     const messageUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
     const messageResponse = await fetch(messageUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: 'Markdown', reply_markup: inlineKeyboard })
+      body: JSON.stringify({ 
+        chat_id: CHAT_ID, 
+        text: message, 
+        parse_mode: 'Markdown', 
+        reply_markup: inlineKeyboard 
+      })
     });
     
     const messageResult = await messageResponse.json();
@@ -749,10 +686,10 @@ async function sendTelegramNotification(pedido) {
       messageIds[pedido.codigo] = messageResult.result.message_id;
     }
     
-    // ⚡ SALVA PEDIDO NA PLANILHA
     await salvarPedidoNaPlanilha(pedido);
     
-    // ⚡ APENAS na memória: localização e comprovante
+    await criarNovaNotificacaoParaStatus(pedido.codigo, pedido.status || statusInicial);
+    
     if (pedido.mapaUrl) {
       await sendLocalizacaoToTelegram(pedido);
     }
@@ -761,20 +698,6 @@ async function sendTelegramNotification(pedido) {
       await sendComprovanteToTelegram(pedido);
     }
     
-    // ⚡ CRIA NOTIFICAÇÃO para PEDIDO ATUAL
-    notifications.push({
-      codigo: pedido.codigo,
-      msg: `Pedido #${pedido.codigo} realizado - R$ ${pedido.total.toFixed(2)}`,
-      data: pedido.data,
-      status: pedido.status,
-      total: pedido.total,
-      endereco: pedido.local,
-      telefone: pedido.whatsapp,
-      itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', '),
-      lida: false
-    });
-    
-    addNotification();
     saveToStorage();
     
     if (!messageResult.ok) {
@@ -840,7 +763,6 @@ function gerarNotaFiscal(pedido) {
 }
 
 function baixarNotaFiscalIndividual(codigo) {
-  // ⚡ Busca da MEMÓRIA (orders) APENAS para comprovante/localização
   let pedido = orders.find(o => o.codigo === codigo);
   
   if (!pedido) {
@@ -982,7 +904,7 @@ function addToCart(id){
 
 function showCart(){
   currentView = 'cart';
-  taxaEntrega = 0; // ⚡ ZERA A TAXA
+  taxaEntrega = 0;
   
   let html = '<h3>Seu Carrinho</h3>';
   if(cart.length === 0){ 
@@ -1086,7 +1008,6 @@ function startCheckout(){
         const lng = position.coords.longitude;
         const localizacaoData = await getEnderecoFromCoords(lat, lng);
         
-        // ⚡ SEMPRE recalcula a taxa
         taxaEntrega = calcularTaxaEntrega(lat, lng);
         localizacaoData.taxaEntrega = taxaEntrega;
         
@@ -1256,7 +1177,6 @@ function showUploadComprovante(localizacaoData, descricao) {
         status: 'Pedido recebido - Aguardando confirmação do pagamento'
       };
       
-      // ⚡ APENAS na memória (orders)
       orders.push(pedido);
       
       await sendTelegramNotification(pedido);
@@ -1278,12 +1198,15 @@ function showNotifs(){
   unreadNotifications = 0;
   updateNotificationCounter();
   saveToStorage();
-  let html = '<h3>Notificações dos Pedidos</h3>';
+  
+  let html = '<h3>📱 Notificações dos Pedidos</h3>';
+  
   if(notifications.length === 0){ 
-    html += '<p>Nenhuma notificação.</p>';
+    html += '<p style="text-align: center; padding: 20px; color: #888;">Nenhuma notificação no momento.</p>';
   } else {
-    notifications.slice().reverse().forEach(notif => {
-      const podeBaixar = notif.status && ( notif.status.includes('Pagamento confirmado') );
+    notifications.forEach(notif => {
+      const podeBaixar = notif.status && notif.status.includes('Pagamento confirmado');
+      
       html += `<div class='card'>
         <b>Pedido #${notif.codigo}</b>
         <div>${notif.msg}</div>
@@ -1293,6 +1216,7 @@ function showNotifs(){
       </div>`;
     });
   }
+  
   document.getElementById('view').innerHTML = html;
 }
 
