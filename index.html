@@ -72,7 +72,8 @@ const CHAT_ID = '1232955171';
 const STORAGE_KEY = 'delivery_app_data';
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const PLANILHA_ID = '1Ih4QIhWBfnV5L12uc0kyBabF7zCk_iKJoXyyjcxlIss';
-const API_URL = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
+const API_URL_PRODUTOS = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;  // cadastro
+const API_URL_PEDIDOS = `https://opensheet.elk.sh/${PLANILHA_ID}/2`;   // pedido
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxz7IapzHB-DwjStvdfl8v9hfGJU4ASlvcbwLg691TbQviEDytBB0vo9XpoNjWZznug/exec';
 
 const LATITUDE_CENTRAL = -4.169490;
@@ -95,6 +96,7 @@ let lastLocalizacaoData = null;
 let cartTimeout;
 let syncInterval;
 let taxaEntrega = 0;
+let verificarStatusInterval;
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
@@ -129,13 +131,20 @@ function calcularTaxaEntrega(latUsuario, lonUsuario) {
 
 async function carregarEstoque() {
   try {
-    const response = await fetch(API_URL);
-    const data = await response.json();
+    // Ler DAS DUAS ABAS
+    const [responseProdutos, responsePedidos] = await Promise.all([
+      fetch(API_URL_PRODUTOS),
+      fetch(API_URL_PEDIDOS)
+    ]);
+    
+    const produtosRaw = await responseProdutos.json();
+    const pedidosRaw = await responsePedidos.json();
     
     products = [];
     categories = [];
     
-    data.forEach(linha => {
+    // Processar cada produto da aba "cadastro"
+    produtosRaw.forEach(linha => {
       const id = Number(linha.id) || 0;
       const categoria = linha.categoria || linha.Categoria || 'Sem Categoria';
       const nome = linha.produto || linha.Produto || 'Produto sem nome';
@@ -151,15 +160,25 @@ async function carregarEstoque() {
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
       const imagem = linha.imagem || linha.imagem_url || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
-      const pedidoNumero = linha.pedido || '';
-      const statusPedido = linha.status || '';
-      const totalPedido = linha.total || 0;
-      const enderecoPedido = linha.endereco || '';
-      const telefonePedido = linha.telefone || '';
-      const itensPedido = linha.itens || '';
-      const dataPedido = linha.data || '';
-      
       if (id > 0 && nome !== 'Produto sem nome') {
+        // Buscar pedido correspondente na aba "pedido"
+        let pedidoData = {};
+        
+        for (let pedido of pedidosRaw) {
+          if (pedido.itens && pedido.itens.toString().includes(id.toString())) {
+            pedidoData = {
+              pedido: pedido.pedido || '',
+              status: pedido.status || '',
+              total: parseFloat(pedido.total) || 0,
+              endereco: pedido.endereco || '',
+              telefone: pedido.telefone || '',
+              itens: pedido.itens || '',
+              data: pedido.data || ''
+            };
+            break;
+          }
+        }
+        
         const produto = {
           id: id,
           categoria: categoria,
@@ -168,13 +187,13 @@ async function carregarEstoque() {
           preco: precoValor,
           estoque: estoque,
           imagem: imagem,
-          pedido: pedidoNumero,
-          status: statusPedido,
-          total: totalPedido,
-          endereco: enderecoPedido,
-          telefone: telefonePedido,
-          itens: itensPedido,
-          data: dataPedido
+          pedido: pedidoData.pedido,
+          status: pedidoData.status,
+          total: pedidoData.total,
+          endereco: pedidoData.endereco,
+          telefone: pedidoData.telefone,
+          itens: pedidoData.itens,
+          data: pedidoData.data
         };
         
         products.push(produto);
@@ -186,6 +205,7 @@ async function carregarEstoque() {
     });
 
     console.log('✅ Produtos carregados:', products.length);
+    console.log('✅ Pedidos encontrados:', pedidosRaw.length);
     
     if (currentView === 'categories' || currentView === 'category-products') {
       showCategories();
@@ -259,6 +279,8 @@ async function criarNovaNotificacaoParaStatus(codigoPedido, novoStatus) {
       }
       
       console.log(`✅ Nova notificação criada: Pedido #${codigoPedido} - ${novoStatus}`);
+    } else {
+      console.log(`⚠️ Pedido #${codigoPedido} não encontrado`);
     }
   } catch (error) {
     console.error('❌ Erro ao criar notificação:', error);
@@ -452,7 +474,7 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
       
       await salvarEstoque(dadosParaAtualizar);
       
-      console.log(`✅ Status atualizado na planilha: Pedido #${codigoPedido} - ${novoStatus} (${produtosDoPedido.length} produtos)`);
+      console.log(`✅ Status atualizado na planilha: Pedido #${codigoPedido} - ${novoStatus}`);
     }
   } catch (error) {
     console.error('❌ Erro ao atualizar status na planilha:', error);
@@ -485,7 +507,31 @@ function iniciarSincronizacao() {
   if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(async () => {
     await carregarEstoque();
-  }, 5000);
+    await verificarAtualizacoesStatus();
+  }, 10000);
+}
+
+async function verificarAtualizacoesStatus() {
+  try {
+    await carregarEstoque();
+    
+    for (const order of orders) {
+      const produtosDoPedido = products.filter(p => p.pedido == order.codigo);
+      
+      if (produtosDoPedido.length > 0) {
+        const statusAtual = produtosDoPedido[0].status || '';
+        const statusAnterior = order.status || '';
+        
+        if (statusAtual !== statusAnterior && statusAtual) {
+          await criarNovaNotificacaoParaStatus(order.codigo, statusAtual);
+          order.status = statusAtual;
+          saveToStorage();
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Erro ao verificar atualizações:', error);
+  }
 }
 
 setInterval(checkTelegramUpdates, 2000);
@@ -623,9 +669,7 @@ async function salvarPedidoNaPlanilha(pedido) {
     
     if (dadosParaSalvar.length > 0) {
       await salvarEstoque(dadosParaSalvar);
-      console.log('✅ Pedido salvo na planilha:', pedido.codigo, 'com', dadosParaSalvar.length, 'produtos');
-    } else {
-      console.warn('⚠️ Nenhum produto para salvar no pedido:', pedido.codigo);
+      console.log('✅ Pedido salvo na planilha:', pedido.codigo);
     }
   } catch (error) {
     console.error('❌ Erro ao salvar pedido na planilha:', error);
@@ -678,9 +722,6 @@ async function sendTelegramNotification(pedido) {
     
     saveToStorage();
     
-    if (!messageResult.ok) {
-      console.error('Erro Telegram:', messageResult);
-    }
   } catch (error) {
     console.error('Erro ao conectar com Telegram:', error);
   }
@@ -718,11 +759,7 @@ async function sendComprovanteToTelegram(pedido) {
     
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`;
     const response = await fetch(url, { method: 'POST', body: formData });
-    const result = await response.json();
     
-    if (!result.ok) {
-      console.error('Erro ao enviar comprovante:', result);
-    }
   } catch (error) {
     console.error('Erro ao enviar comprovante para Telegram:', error);
   }
@@ -837,7 +874,7 @@ function showCategories(){
   });
   
   if (categories.length === 0) {
-    html += '<p style="color:#888; text-align:center; padding:20px;">Nenhuma categoria disponível</p>';
+    html += '<p style="color:#888; text-align:center; padding:20px;">Carregando categorias...</p>';
   }
   
   document.getElementById('view').innerHTML = html;
