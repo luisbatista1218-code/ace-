@@ -73,7 +73,7 @@ const STORAGE_KEY = 'delivery_app_data';
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const PLANILHA_ID = '1Ih4QIhWBfnV5L12uc0kyBabF7zCk_iKJoXyyjcxlIss';
 const API_URL = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzMB5AjGip7dLxsX6z1FQr3Dp5FocjWE61RxIm9p7OhwKHmZbN5iR-29AvFIXwwgUl9/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOf0MfvX14JcgW9zFJy7Y-8vF4z4L08PG8egmzzGQ_Kakocn2sIDMARmQtNU-bTkyv/exec';
 
 const LATITUDE_CENTRAL = -4.169490;
 const LONGITUDE_CENTRAL = -38.917917;
@@ -449,7 +449,7 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
         descrição: produto.descricao || '',
         pedido: codigoPedido || '',
         status: novoStatus || '',
-        total: String(produto.total || 0),
+        total: produto.total || '',
         endereco: produto.endereco || '',
         telefone: produto.telefone || '',
         itens: produto.itens || '',
@@ -598,22 +598,18 @@ async function salvarPedidoNaPlanilha(pedido) {
     
     for (const itemPedido of pedido.produtos) {
       const produto = products.find(p => p.id === itemPedido.id);
+      
       if (produto) {
-        produto.estoque -= itemPedido.qtd;
-        produto.pedido = pedido.codigo;
-        produto.status = pedido.status;
-        produto.total = pedido.total;
-        produto.endereco = pedido.local;
-        produto.telefone = pedido.whatsapp;
-        produto.itens = pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ');
-        produto.data = pedido.data;
+        const estoqueAtual = produto.estoque || 0;
+        const quantidadePedido = itemPedido.qtd || 0;
+        const novoEstoque = estoqueAtual - quantidadePedido;
         
         const dadosProduto = {
           id: String(produto.id),
           categoria: produto.categoria || '',
           produto: produto.nome || '',
           preço: String(produto.preco || 0),
-          estoque: String(produto.estoque || 0),
+          estoque: String(novoEstoque > 0 ? novoEstoque : 0),
           imagem: produto.imagem || '',
           descrição: produto.descricao || '',
           pedido: pedido.codigo || '',
@@ -627,15 +623,17 @@ async function salvarPedidoNaPlanilha(pedido) {
         
         dadosParaSalvar.push(dadosProduto);
         
-        if (produto.estoque <= 0) {
+        if (novoEstoque <= 0) {
           alertaEstoqueZerado(produto);
         }
       }
     }
     
-    await salvarEstoque(dadosParaSalvar);
+    if (dadosParaSalvar.length > 0) {
+      await salvarEstoque(dadosParaSalvar);
+      console.log('✅ Pedido salvo na planilha:', pedido.codigo, 'com', dadosParaSalvar.length, 'produtos');
+    }
     
-    console.log('✅ Pedido salvo na planilha:', pedido.codigo, 'com', dadosParaSalvar.length, 'produtos');
   } catch (error) {
     console.error('❌ Erro ao salvar pedido na planilha:', error);
   }
