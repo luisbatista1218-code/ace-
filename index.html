@@ -449,38 +449,51 @@ async function processarCallbackStatus(data, callbackObj) {
 
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
+    // 1. Buscar TODOS os produtos da planilha
     await carregarEstoque();
     
+    // 2. Filtrar produtos deste pedido
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
-    if (produtosDoPedido.length > 0) {
-      const dadosParaAtualizar = produtosDoPedido.map(produto => ({
-        id: String(produto.id),
-        categoria: produto.categoria || '',
-        produto: produto.nome || '',
-        preco: produto.preco || 0,
-        estoque: produto.estoque || 0,
-        imagem: produto.imagem || '',
-        descricao: produto.descricao || '',
-        pedido: codigoPedido || '',
-        status: novoStatus || '',
-        total: produto.total || 0,
-        endereco: produto.endereco || '',
-        telefone: produto.telefone || '',
-        itens: produto.itens || '',
-        data: produto.data || '',
-        qtd: 1
-      }));
-      
-      await salvarEstoque(dadosParaAtualizar);
-      
-      console.log(`✅ Status atualizado na planilha: Pedido #${codigoPedido} - ${novoStatus}`);
+    if (produtosDoPedido.length === 0) {
+      console.log(`❌ Nenhum produto encontrado para pedido #${codigoPedido}`);
+      return;
     }
+    
+    // 3. Pegar dados do PRIMEIRO produto (são os mesmos para todos)
+    const primeiroProduto = produtosDoPedido[0];
+    
+    // 4. Preparar dados para ATUALIZAR TODOS os produtos
+    const dadosParaSalvar = produtosDoPedido.map(produto => ({
+      id: String(produto.id),
+      categoria: produto.categoria || '',
+      produto: produto.nome || '',
+      preco: produto.preco || 0,
+      estoque: produto.estoque || 0,
+      imagem: produto.imagem || '',
+      descricao: produto.descricao || '',
+      // ⭐⭐ AQUI ESTÁ O SEGREDO: MESMOS DADOS PARA TODOS ⭐⭐
+      pedido: codigoPedido,
+      status: novoStatus, // MESMO STATUS
+      total: primeiroProduto.total || 0, // MESMO TOTAL
+      endereco: primeiroProduto.endereco || '', // MESMO ENDEREÇO
+      telefone: primeiroProduto.telefone || '', // MESMO TELEFONE
+      itens: primeiroProduto.itens || '', // MESMOS ITENS
+      data: primeiroProduto.data || '',
+      qtd: 1
+    }));
+    
+    // 5. Enviar para o Apps Script
+    if (dadosParaSalvar.length > 0) {
+      await salvarEstoque(dadosParaSalvar);
+      console.log(`✅ Status ATUALIZADO para ${dadosParaSalvar.length} produtos do Pedido #${codigoPedido}`);
+    }
+    
   } catch (error) {
-    console.error('❌ Erro ao atualizar status na planilha:', error);
+    console.error('❌ Erro:', error);
   }
 }
-
+  
 async function alertaEstoqueZerado(produto) {
   const mensagem = `🚨 *ESTOQUE ZERADO!*\n\n📦 ${produto.nome} está ESGOTADO!\n`;
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
