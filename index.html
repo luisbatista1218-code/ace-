@@ -129,6 +129,7 @@ function calcularTaxaEntrega(latUsuario, lonUsuario) {
   return Math.max(taxaCalculada, TAXA_MINIMA);
 }
 
+
 async function carregarEstoque() {
   try {
     // Ler DAS DUAS ABAS
@@ -140,10 +141,30 @@ async function carregarEstoque() {
     const produtosRaw = await responseProdutos.json();
     const pedidosRaw = await responsePedidos.json();
     
+    console.log('📦 Produtos raw:', produtosRaw.length);
+    console.log('📦 Pedidos raw:', pedidosRaw);
+    
     products = [];
     categories = [];
     
-    // Processar cada produto da aba "cadastro"
+    // Criar um MAPA de pedidos para fácil acesso
+    const mapaPedidos = {};
+    pedidosRaw.forEach(pedido => {
+      if (pedido.pedido) {
+        mapaPedidos[pedido.pedido] = {
+          status: pedido.status || '',
+          total: parseFloat(pedido.total) || 0,
+          endereco: pedido.endereco || '',
+          telefone: pedido.telefone || '',
+          itens: pedido.itens || '',
+          data: pedido.data || ''
+        };
+      }
+    });
+    
+    console.log('🗺️ Mapa de pedidos:', mapaPedidos);
+    
+    // Processar cada produto
     produtosRaw.forEach(linha => {
       const id = Number(linha.id) || 0;
       const categoria = linha.categoria || linha.Categoria || 'Sem Categoria';
@@ -160,25 +181,39 @@ async function carregarEstoque() {
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
       const imagem = linha.imagem || linha.imagem_url || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
-      if (id > 0 && nome !== 'Produto sem nome') {
-        // Buscar pedido correspondente na aba "pedido"
-        let pedidoData = {};
-        
-        for (let pedido of pedidosRaw) {
-          if (pedido.itens && pedido.itens.toString().includes(id.toString())) {
-            pedidoData = {
-              pedido: pedido.pedido || '',
-              status: pedido.status || '',
-              total: parseFloat(pedido.total) || 0,
-              endereco: pedido.endereco || '',
-              telefone: pedido.telefone || '',
-              itens: pedido.itens || '',
-              data: pedido.data || ''
-            };
+      // BUSCAR PEDIDO - AGORA PROCURA PELO ID DO PEDIDO DIRETO
+      let pedidoData = {};
+      let pedidoEncontrado = null;
+      
+      // Primeiro tenta encontrar pedido pelo número no campo "pedido" do produto
+      const pedidoNumeroProduto = linha.pedido || '';
+      
+      if (pedidoNumeroProduto && mapaPedidos[pedidoNumeroProduto]) {
+        pedidoEncontrado = mapaPedidos[pedidoNumeroProduto];
+      } else {
+        // Se não encontrar, procura em todos os pedidos
+        for (const [numeroPedido, dadosPedido] of Object.entries(mapaPedidos)) {
+          if (dadosPedido.itens && dadosPedido.itens.toString().includes(id.toString())) {
+            pedidoEncontrado = dadosPedido;
+            pedidoData.pedido = numeroPedido;
             break;
           }
         }
-        
+      }
+      
+      if (pedidoEncontrado) {
+        pedidoData = {
+          pedido: pedidoNumeroProduto || Object.keys(mapaPedidos).find(key => mapaPedidos[key] === pedidoEncontrado) || '',
+          status: pedidoEncontrado.status,
+          total: pedidoEncontrado.total,
+          endereco: pedidoEncontrado.endereco,
+          telefone: pedidoEncontrado.telefone,
+          itens: pedidoEncontrado.itens,
+          data: pedidoEncontrado.data
+        };
+      }
+      
+      if (id > 0 && nome !== 'Produto sem nome') {
         const produto = {
           id: id,
           categoria: categoria,
@@ -187,13 +222,13 @@ async function carregarEstoque() {
           preco: precoValor,
           estoque: estoque,
           imagem: imagem,
-          pedido: pedidoData.pedido,
-          status: pedidoData.status,
-          total: pedidoData.total,
-          endereco: pedidoData.endereco,
-          telefone: pedidoData.telefone,
-          itens: pedidoData.itens,
-          data: pedidoData.data
+          pedido: pedidoData.pedido || '',
+          status: pedidoData.status || '',
+          total: pedidoData.total || 0,
+          endereco: pedidoData.endereco || '',
+          telefone: pedidoData.telefone || '',
+          itens: pedidoData.itens || '',
+          data: pedidoData.data || ''
         };
         
         products.push(produto);
@@ -204,8 +239,7 @@ async function carregarEstoque() {
       }
     });
 
-    console.log('✅ Produtos carregados:', products.length);
-    console.log('✅ Pedidos encontrados:', pedidosRaw.length);
+    console.log('✅ Produtos finais:', products);
     
     if (currentView === 'categories' || currentView === 'category-products') {
       showCategories();
@@ -449,51 +483,69 @@ async function processarCallbackStatus(data, callbackObj) {
 
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
-    // 1. Buscar TODOS os produtos da planilha
+    // Carregar dados atualizados para ter certeza
     await carregarEstoque();
     
-    // 2. Filtrar produtos deste pedido
+    // Criar dados para atualizar
+    const dadosParaAtualizar = [];
+    
+    // Encontrar TODOS os produtos deste pedido
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
     if (produtosDoPedido.length === 0) {
-      console.log(`❌ Nenhum produto encontrado para pedido #${codigoPedido}`);
-      return;
+      console.log(`⚠️ Pedido #${codigoPedido} não encontrado nos produtos`);
+      
+      // Se não encontrar, cria um registro mínimo
+      dadosParaAtualizar.push({
+        id: '0',
+        categoria: 'Pedido',
+        produto: `Pedido #${codigoPedido}`,
+        preco: 0,
+        estoque: 0,
+        imagem: '',
+        descricao: 'Pedido do cliente',
+        pedido: codigoPedido,
+        status: novoStatus,
+        total: 0,
+        endereco: '',
+        telefone: '',
+        itens: 'Pedido',
+        data: new Date().toLocaleString('pt-BR'),
+        qtd: 1
+      });
+    } else {
+      // Para cada produto do pedido
+      produtosDoPedido.forEach(produto => {
+        dadosParaAtualizar.push({
+          id: String(produto.id),
+          categoria: produto.categoria || '',
+          produto: produto.nome || '',
+          preco: produto.preco || 0,
+          estoque: produto.estoque || 0,
+          imagem: produto.imagem || '',
+          descricao: produto.descricao || '',
+          pedido: codigoPedido,
+          status: novoStatus,
+          total: produto.total || 0,
+          endereco: produto.endereco || '',
+          telefone: produto.telefone || '',
+          itens: produto.itens || '',
+          data: produto.data || new Date().toLocaleString('pt-BR'),
+          qtd: 1
+        });
+      });
     }
     
-    // 3. Pegar dados do PRIMEIRO produto (são os mesmos para todos)
-    const primeiroProduto = produtosDoPedido[0];
-    
-    // 4. Preparar dados para ATUALIZAR TODOS os produtos
-    const dadosParaSalvar = produtosDoPedido.map(produto => ({
-      id: String(produto.id),
-      categoria: produto.categoria || '',
-      produto: produto.nome || '',
-      preco: produto.preco || 0,
-      estoque: produto.estoque || 0,
-      imagem: produto.imagem || '',
-      descricao: produto.descricao || '',
-      // ⭐⭐ AQUI ESTÁ O SEGREDO: MESMOS DADOS PARA TODOS ⭐⭐
-      pedido: codigoPedido,
-      status: novoStatus, // MESMO STATUS
-      total: primeiroProduto.total || 0, // MESMO TOTAL
-      endereco: primeiroProduto.endereco || '', // MESMO ENDEREÇO
-      telefone: primeiroProduto.telefone || '', // MESMO TELEFONE
-      itens: primeiroProduto.itens || '', // MESMOS ITENS
-      data: primeiroProduto.data || '',
-      qtd: 1
-    }));
-    
-    // 5. Enviar para o Apps Script
-    if (dadosParaSalvar.length > 0) {
-      await salvarEstoque(dadosParaSalvar);
-      console.log(`✅ Status ATUALIZADO para ${dadosParaSalvar.length} produtos do Pedido #${codigoPedido}`);
+    // Enviar para o Apps Script
+    if (dadosParaAtualizar.length > 0) {
+      await salvarEstoque(dadosParaAtualizar);
+      console.log(`✅ Status atualizado: Pedido #${codigoPedido} - ${novoStatus} (${dadosParaAtualizar.length} registros)`);
     }
     
   } catch (error) {
-    console.error('❌ Erro:', error);
+    console.error('❌ Erro ao atualizar status na planilha:', error);
   }
-}
-  
+  }
 async function alertaEstoqueZerado(produto) {
   const mensagem = `🚨 *ESTOQUE ZERADO!*\n\n📦 ${produto.nome} está ESGOTADO!\n`;
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
