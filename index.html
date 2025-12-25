@@ -276,70 +276,44 @@ async function salvarEstoque(produtoComPedido = null) {
   }
 }
 
-// ⚡ FUNÇÃO: Busca pedidos da planilha e CRIA NOTIFICAÇÕES
-async function sincronizarNotificacoesDaPlanilha() {
+// ⚡ FUNÇÃO: Atualiza notificações para PEDIDO ATUAL
+async function atualizarNotificacaoParaPedidoAtual(codigoPedido, novoStatus) {
   try {
-    const response = await fetch(API_URL);
-    const data = await response.json();
+    // Busca produto ATUAL deste pedido
+    await carregarEstoque();
+    const produtoDoPedido = products.find(p => p.pedido == codigoPedido);
     
-    let novasNotificacoes = 0;
-    
-    // Agrupa produtos por pedido
-    const pedidosDaPlanilha = {};
-    
-    data.forEach(linha => {
-      const pedidoNumero = linha.pedido;
-      const statusPlanilha = linha.status;
+    if (produtoDoPedido) {
+      // Verifica se JÁ existe notificação para este pedido
+      const notificacaoIndex = notifications.findIndex(n => n.codigo == codigoPedido);
       
-      if (pedidoNumero && statusPlanilha) {
-        if (!pedidosDaPlanilha[pedidoNumero]) {
-          pedidosDaPlanilha[pedidoNumero] = {
-            codigo: pedidoNumero,
-            status: statusPlanilha,
-            total: linha.total || 0,
-            endereco: linha.endereco || '',
-            telefone: linha.telefone || '',
-            itens: linha.itens || '',
-            data: linha.data || new Date().toLocaleString('pt-BR')
-          };
-        } else {
-          // Mantém o status mais recente
-          pedidosDaPlanilha[pedidoNumero].status = statusPlanilha;
-        }
-      }
-    });
-    
-    // Para CADA pedido da planilha
-    for (const codigoPedido in pedidosDaPlanilha) {
-      const pedidoPlanilha = pedidosDaPlanilha[codigoPedido];
-      
-      // Verifica se já existe notificação com ESTE MESMO STATUS
-      const notificacaoExistente = notifications.find(n => 
-        n.codigo == codigoPedido && n.status === pedidoPlanilha.status
-      );
-      
-      if (!notificacaoExistente) {
-        // ⚡ REMOVE notificações ANTIGAS deste mesmo pedido
-        notifications = notifications.filter(n => n.codigo != codigoPedido);
+      if (notificacaoIndex !== -1) {
+        // ATUALIZA notificação existente
+        notifications[notificacaoIndex].status = novoStatus;
+        notifications[notificacaoIndex].msg = `Pedido #${codigoPedido}: ${novoStatus}`;
         
-        // ⚡ CRIA NOVA NOTIFICAÇÃO com status ATUAL da planilha
+        // Marca como não lida
+        const notifLida = notifications[notificacaoIndex].lida;
+        if (!notifLida) {
+          unreadNotifications++;
+        }
+      } else {
+        // CRIA nova notificação
         notifications.push({
           codigo: codigoPedido,
-          msg: `📦 Pedido #${codigoPedido}: ${pedidoPlanilha.status}`,
-          data: pedidoPlanilha.data,
-          status: pedidoPlanilha.status,
-          total: pedidoPlanilha.total,
-          endereco: pedidoPlanilha.endereco,
-          telefone: pedidoPlanilha.telefone,
-          itens: pedidoPlanilha.itens
+          msg: `Pedido #${codigoPedido}: ${novoStatus}`,
+          data: produtoDoPedido.data || new Date().toLocaleString('pt-BR'),
+          status: novoStatus,
+          total: produtoDoPedido.total || 0,
+          endereco: produtoDoPedido.endereco || '',
+          telefone: produtoDoPedido.telefone || '',
+          itens: produtoDoPedido.itens || '',
+          lida: false
         });
         
-        novasNotificacoes++;
+        unreadNotifications++;
       }
-    }
-    
-    if (novasNotificacoes > 0) {
-      unreadNotifications += novasNotificacoes;
+      
       updateNotificationCounter();
       saveToStorage();
       
@@ -347,11 +321,10 @@ async function sincronizarNotificacoesDaPlanilha() {
         showNotifs();
       }
       
-      console.log(`✅ ${novasNotificacoes} notificações atualizadas da planilha`);
+      console.log(`✅ Notificação atualizada: Pedido #${codigoPedido} - ${novoStatus}`);
     }
-    
   } catch (error) {
-    console.error('❌ Erro ao sincronizar notificações:', error);
+    console.error('❌ Erro ao atualizar notificação:', error);
   }
 }
 
@@ -399,29 +372,23 @@ async function checkTelegramUpdates() {
 
 const pedidosBloqueados = new Set();
 
-// ⚡ FUNÇÃO: Busca pedido DA PLANILHA para Telegram
-async function buscarPedidoDaPlanilha(codigoPedido) {
+// ⚡ FUNÇÃO: Busca pedido ATUAL da planilha
+async function buscarPedidoAtualDaPlanilha(codigoPedido) {
   try {
     await carregarEstoque();
     
-    // Busca TODOS os produtos deste pedido
-    const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
+    // Busca produto ATUAL deste pedido
+    const produtoDoPedido = products.find(p => p.pedido == codigoPedido);
     
-    if (produtosDoPedido.length > 0) {
-      const primeiroProduto = produtosDoPedido[0];
-      
-      // Usa dados DA PLANILHA
-      const total = primeiroProduto.total || produtosDoPedido.reduce((sum, p) => sum + (p.preco || 0), 0);
-      const itens = primeiroProduto.itens || produtosDoPedido.map(p => `${p.nome}`).join(', ');
-      
+    if (produtoDoPedido) {
       return {
         codigo: codigoPedido,
-        status: primeiroProduto.status || 'Pedido recebido',
-        total: parseFloat(total) || 0,
-        local: primeiroProduto.endereco || 'Endereço não informado',
-        whatsapp: primeiroProduto.telefone || 'Telefone não informado',
-        produtos: produtosDoPedido.map(p => ({ nome: p.nome, qtd: 1 })),
-        data: primeiroProduto.data || new Date().toLocaleString('pt-BR')
+        status: produtoDoPedido.status || 'Pedido recebido',
+        total: parseFloat(produtoDoPedido.total) || 0,
+        local: produtoDoPedido.endereco || 'Endereço não informado',
+        whatsapp: produtoDoPedido.telefone || 'Telefone não informado',
+        produtos: produtoDoPedido.itens ? [{ nome: produtoDoPedido.itens, qtd: 1 }] : [{ nome: 'Produto', qtd: 1 }],
+        data: produtoDoPedido.data || new Date().toLocaleString('pt-BR')
       };
     }
     
@@ -432,11 +399,11 @@ async function buscarPedidoDaPlanilha(codigoPedido) {
   }
 }
 
-// ⚡ FUNÇÃO: Atualiza Telegram APENAS se já existe mensagem
-async function atualizarMensagemTelegramNoMomento(codigoPedido, novoStatus) {
+// ⚡ FUNÇÃO: Atualiza MENSAGEM EXISTENTE no Telegram
+async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
   try {
-    // Busca pedido DIRETAMENTE da planilha
-    const pedido = await buscarPedidoDaPlanilha(codigoPedido);
+    // Busca pedido ATUAL da planilha
+    const pedido = await buscarPedidoAtualDaPlanilha(codigoPedido);
     
     if (pedido && messageIds[codigoPedido]) {
       const inlineKeyboard = {
@@ -449,7 +416,7 @@ async function atualizarMensagemTelegramNoMomento(codigoPedido, novoStatus) {
       
       const message = `📦 *PEDIDO #${pedido.codigo}* - ${novoStatus}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
       
-      // ⚡ APENAS ATUALIZA se já existe mensagem
+      // ATUALIZA MENSAGEM EXISTENTE (não cria nova)
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -462,10 +429,10 @@ async function atualizarMensagemTelegramNoMomento(codigoPedido, novoStatus) {
         })
       });
       
-      console.log(`✅ Telegram atualizado: Pedido #${codigoPedido} - ${novoStatus}`);
+      console.log(`✅ Mensagem Telegram ATUALIZADA: Pedido #${codigoPedido} - ${novoStatus}`);
     }
   } catch (error) {
-    console.error('❌ Erro ao atualizar Telegram:', error);
+    console.error('❌ Erro ao atualizar mensagem Telegram:', error);
   }
 }
 
@@ -507,14 +474,14 @@ async function processarCallbackStatus(data, callbackObj) {
     pedidosBloqueados.add(chave);
   }
   
-  // 1. ATUALIZA TELEGRAM (usa planilha)
-  await atualizarMensagemTelegramNoMomento(codigo, textoStatus);
-  
-  // 2. ATUALIZA STATUS NA PLANILHA
+  // 1. ATUALIZA STATUS NA PLANILHA
   await atualizarStatusNaPlanilha(codigo, textoStatus);
   
-  // 3. SINCRONIZA NOTIFICAÇÕES IMEDIATAMENTE
-  await sincronizarNotificacoesDaPlanilha();
+  // 2. ATUALIZA MENSAGEM EXISTENTE no Telegram
+  await atualizarMensagemTelegramExistente(codigo, textoStatus);
+  
+  // 3. ATUALIZA NOTIFICAÇÃO para PEDIDO ATUAL
+  await atualizarNotificacaoParaPedidoAtual(codigo, textoStatus);
   
   if (callbackObj?.id) {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
@@ -534,6 +501,7 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
     await carregarEstoque();
     
+    // Busca TODOS os produtos deste pedido
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
     if (produtosDoPedido.length > 0) {
@@ -550,7 +518,7 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   }
 }
 
-// ⚡ RESTANTE DO CÓDIGO (funcionalidades existentes)
+// ⚡ FUNÇÃO: Atualiza mensagem Telegram (para quando usuário está online)
 async function atualizarMensagemTelegram(codigo, pedido) {
   const inlineKeyboard = {
     inline_keyboard: [
@@ -611,8 +579,7 @@ function iniciarSincronizacao() {
   if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(async () => {
     await carregarEstoque();
-    await sincronizarNotificacoesDaPlanilha();
-  }, 3000); // Sincroniza a cada 3 segundos
+  }, 5000);
 }
 
 setInterval(checkTelegramUpdates, 2000);
@@ -785,21 +752,6 @@ async function sendTelegramNotification(pedido) {
     // ⚡ SALVA PEDIDO NA PLANILHA
     await salvarPedidoNaPlanilha(pedido);
     
-    // ⚡ CRIA NOTIFICAÇÃO LOCAL
-    notifications.push({
-      codigo: pedido.codigo,
-      msg: `📦 Pedido #${pedido.codigo} realizado - R$ ${pedido.total.toFixed(2)}`,
-      data: pedido.data,
-      status: pedido.status,
-      total: pedido.total,
-      endereco: pedido.local,
-      telefone: pedido.whatsapp,
-      itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')
-    });
-    
-    addNotification();
-    saveToStorage();
-    
     // ⚡ APENAS na memória: localização e comprovante
     if (pedido.mapaUrl) {
       await sendLocalizacaoToTelegram(pedido);
@@ -808,6 +760,22 @@ async function sendTelegramNotification(pedido) {
     if (pedido.comprovante) {
       await sendComprovanteToTelegram(pedido);
     }
+    
+    // ⚡ CRIA NOTIFICAÇÃO para PEDIDO ATUAL
+    notifications.push({
+      codigo: pedido.codigo,
+      msg: `Pedido #${pedido.codigo} realizado - R$ ${pedido.total.toFixed(2)}`,
+      data: pedido.data,
+      status: pedido.status,
+      total: pedido.total,
+      endereco: pedido.local,
+      telefone: pedido.whatsapp,
+      itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', '),
+      lida: false
+    });
+    
+    addNotification();
+    saveToStorage();
     
     if (!messageResult.ok) {
       console.error('Erro Telegram:', messageResult);
@@ -1349,8 +1317,9 @@ async function inicializar() {
   loadFromStorage();
   iniciarSincronizacao();
   showHome();
-  }
-  inicializar();
+}
+
+inicializar();
 </script>
 </body>
-</html>  
+</html>
