@@ -73,7 +73,7 @@ const STORAGE_KEY = 'delivery_app_data';
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const PLANILHA_ID = '1Ih4QIhWBfnV5L12uc0kyBabF7zCk_iKJoXyyjcxlIss';
 const API_URL = `https://opensheet.elk.sh/${PLANILHA_ID}/1`;
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzOf0MfvX14JcgW9zFJy7Y-8vF4z4L08PG8egmzzGQ_Kakocn2sIDMARmQtNU-bTkyv/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxz7IapzHB-DwjStvdfl8v9hfGJU4ASlvcbwLg691TbQviEDytBB0vo9XpoNjWZznug/exec';
 
 const LATITUDE_CENTRAL = -4.169490;
 const LONGITUDE_CENTRAL = -38.917917;
@@ -149,7 +149,7 @@ async function carregarEstoque() {
       
       const estoque = Number(linha.estoque) || 0;
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
-      const imagem = linha.imagem_url || linha.imagem || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
+      const imagem = linha.imagem || linha.imagem_url || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
       const pedidoNumero = linha.pedido || '';
       const statusPedido = linha.status || '';
@@ -211,24 +211,17 @@ async function salvarEstoque(dadosParaSalvar) {
     });
 
     if (response.ok) {
+      const resultado = await response.text();
+      console.log('✅ Salvamento bem-sucedido:', resultado);
       return true;
     } else {
-      throw new Error('Erro HTTP: ' + response.status);
+      console.error('❌ Erro HTTP:', response.status);
+      return false;
     }
 
   } catch (err) {
     console.error("❌ Erro ao salvar:", err);
-    try {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', SCRIPT_URL, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.timeout = 5000;
-      xhr.send(JSON.stringify(dados));
-      return true;
-    } catch (fallbackErr) {
-      console.error("❌ Fallback falhou:", fallbackErr);
-      return false;
-    }
+    return false;
   }
 }
 
@@ -443,17 +436,18 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
         id: String(produto.id),
         categoria: produto.categoria || '',
         produto: produto.nome || '',
-        preço: String(produto.preco || 0),
-        estoque: String(produto.estoque || 0),
+        preco: produto.preco || 0,
+        estoque: produto.estoque || 0,
         imagem: produto.imagem || '',
-        descrição: produto.descricao || '',
+        descricao: produto.descricao || '',
         pedido: codigoPedido || '',
         status: novoStatus || '',
-        total: produto.total || '',
+        total: produto.total || 0,
         endereco: produto.endereco || '',
         telefone: produto.telefone || '',
         itens: produto.itens || '',
-        data: produto.data || ''
+        data: produto.data || '',
+        qtd: 1
       }));
       
       await salvarEstoque(dadosParaAtualizar);
@@ -598,27 +592,25 @@ async function salvarPedidoNaPlanilha(pedido) {
     
     for (const itemPedido of pedido.produtos) {
       const produto = products.find(p => p.id === itemPedido.id);
-      
       if (produto) {
-        const estoqueAtual = produto.estoque || 0;
-        const quantidadePedido = itemPedido.qtd || 0;
-        const novoEstoque = estoqueAtual - quantidadePedido;
+        const novoEstoque = (produto.estoque || 0) - (itemPedido.qtd || 0);
         
         const dadosProduto = {
           id: String(produto.id),
           categoria: produto.categoria || '',
           produto: produto.nome || '',
-          preço: String(produto.preco || 0),
-          estoque: String(novoEstoque > 0 ? novoEstoque : 0),
+          preco: produto.preco || 0,
+          estoque: novoEstoque >= 0 ? novoEstoque : 0,
           imagem: produto.imagem || '',
-          descrição: produto.descricao || '',
+          descricao: produto.descricao || '',
           pedido: pedido.codigo || '',
           status: pedido.status || '',
-          total: String(pedido.total || 0),
+          total: pedido.total || 0,
           endereco: pedido.local || '',
           telefone: pedido.whatsapp || '',
           itens: pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', '),
-          data: pedido.data || ''
+          data: pedido.data || '',
+          qtd: itemPedido.qtd || 1
         };
         
         dadosParaSalvar.push(dadosProduto);
@@ -632,8 +624,9 @@ async function salvarPedidoNaPlanilha(pedido) {
     if (dadosParaSalvar.length > 0) {
       await salvarEstoque(dadosParaSalvar);
       console.log('✅ Pedido salvo na planilha:', pedido.codigo, 'com', dadosParaSalvar.length, 'produtos');
+    } else {
+      console.warn('⚠️ Nenhum produto para salvar no pedido:', pedido.codigo);
     }
-    
   } catch (error) {
     console.error('❌ Erro ao salvar pedido na planilha:', error);
   }
