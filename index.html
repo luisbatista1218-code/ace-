@@ -746,7 +746,7 @@ async function sendTelegramNotification(pedido) {
     ]
   };
   
-  const message = `📦 *PEDIDO #${pedido.codigo}*\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}\n🟡 *Status:* ${statusInicial}`;
+  const message = `📦 *PEDIDO #${pedido.codigo}*\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
   
   try {
     const messageUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
