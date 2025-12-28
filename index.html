@@ -96,6 +96,7 @@ let lastLocalizacaoData = null;
 let cartTimeout;
 let syncInterval;
 let taxaEntrega = 0;
+let isProcessingCheckout = false;
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
@@ -130,7 +131,6 @@ function calcularTaxaEntrega(latUsuario, lonUsuario) {
 
 async function carregarEstoque() {
   try {
-    // Ler DAS DUAS ABAS
     const [responseProdutos, responsePedidos] = await Promise.all([
       fetch(API_URL_PRODUTOS),
       fetch(API_URL_PEDIDOS)
@@ -142,7 +142,6 @@ async function carregarEstoque() {
     products = [];
     categories = [];
     
-    // Criar MAPA de pedidos para acesso rápido
     const mapaPedidos = {};
     pedidosRaw.forEach(pedido => {
       if (pedido.pedido) {
@@ -157,7 +156,6 @@ async function carregarEstoque() {
       }
     });
     
-    // Processar CADA produto
     produtosRaw.forEach(linha => {
       const id = Number(linha.id) || 0;
       const categoria = linha.categoria || linha.Categoria || 'Sem Categoria';
@@ -174,7 +172,6 @@ async function carregarEstoque() {
       const descricao = linha.descricao || linha.descrição || linha['descrição '] || linha.Descricao || linha.Descrição || '';
       const imagem = linha.imagem || linha.imagem_url || `https://via.placeholder.com/400x200?text=${encodeURIComponent(nome)}`;
       
-      // BUSCAR PEDIDO PELO NÚMERO DO PEDIDO (834, 788, etc)
       let pedidoData = {};
       const pedidoNumeroProduto = linha.pedido || '';
       
@@ -217,7 +214,6 @@ async function carregarEstoque() {
     });
 
     console.log('✅ Produtos carregados:', products.length);
-    console.log('✅ Pedidos no mapa:', Object.keys(mapaPedidos).length);
     
     if (currentView === 'categories' || currentView === 'category-products') {
       showCategories();
@@ -262,6 +258,15 @@ async function criarNovaNotificacaoParaStatus(codigoPedido, novoStatus) {
     await carregarEstoque();
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
     
+    const notificacaoExistente = notifications.find(n => 
+      n.codigo == codigoPedido && n.status === novoStatus
+    );
+    
+    if (notificacaoExistente) {
+      console.log(`⚠️ Notificação já existe para pedido #${codigoPedido} com status: ${novoStatus}`);
+      return;
+    }
+    
     if (produtosDoPedido.length > 0) {
       const primeiroProduto = produtosDoPedido[0];
       const novaNotificacao = {
@@ -292,7 +297,6 @@ async function criarNovaNotificacaoParaStatus(codigoPedido, novoStatus) {
       
       console.log(`✅ Nova notificação criada: Pedido #${codigoPedido} - ${novoStatus}`);
     } else {
-      // Se não encontrar produto, cria notificação básica
       const novaNotificacao = {
         codigo: codigoPedido,
         msg: `Pedido #${codigoPedido}: ${novoStatus}`,
@@ -479,7 +483,6 @@ async function processarCallbackStatus(data, callbackObj) {
 
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
-    // Primeiro carrega dados para ver se o pedido existe
     await carregarEstoque();
     
     const produtosDoPedido = products.filter(p => p.pedido == codigoPedido);
@@ -487,7 +490,6 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
     let dadosParaAtualizar = [];
     
     if (produtosDoPedido.length > 0) {
-      // Se encontrar produtos do pedido, atualiza todos
       produtosDoPedido.forEach(produto => {
         dadosParaAtualizar.push({
           id: String(produto.id),
@@ -508,7 +510,6 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
         });
       });
     } else {
-      // Se NÃO encontrar, cria um registro especial para o pedido
       dadosParaAtualizar.push({
         id: '0',
         categoria: 'Pedido',
@@ -528,12 +529,10 @@ async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
       });
     }
     
-    // Envia para atualização
     if (dadosParaAtualizar.length > 0) {
       await salvarEstoque(dadosParaAtualizar);
       console.log(`✅ Status atualizado na planilha: Pedido #${codigoPedido} - ${novoStatus} (${dadosParaAtualizar.length} registros)`);
       
-      // Recarrega para ter dados atualizados
       await carregarEstoque();
     }
     
@@ -737,7 +736,7 @@ async function salvarPedidoNaPlanilha(pedido) {
 }
 
 async function sendTelegramNotification(pedido) {
-  const statusInicial = "Pedido recebido - Aguardando confirmação do pagamento";
+  const statusInicial = "📦 Pedido recebido";
   
   const inlineKeyboard = {
     inline_keyboard: [
@@ -747,7 +746,7 @@ async function sendTelegramNotification(pedido) {
     ]
   };
   
-  const message = `📦 *PEDIDO #${pedido.codigo}* - ${pedido.status || statusInicial}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
+  const message = `📦 *PEDIDO #${pedido.codigo}*\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}\n🟡 *Status:* ${statusInicial}`;
   
   try {
     const messageUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
@@ -770,7 +769,7 @@ async function sendTelegramNotification(pedido) {
     
     await salvarPedidoNaPlanilha(pedido);
     
-    await criarNovaNotificacaoParaStatus(pedido.codigo, pedido.status || statusInicial);
+    await criarNovaNotificacaoParaStatus(pedido.codigo, statusInicial);
     
     if (pedido.mapaUrl) {
       await sendLocalizacaoToTelegram(pedido);
@@ -1074,8 +1073,14 @@ async function getEnderecoFromCoords(lat, lng) {
 }
 
 function startCheckout(){
+  if(isProcessingCheckout) {
+    alert('⚠️ Já está processando um pedido. Aguarde...');
+    return;
+  }
+  
   if(cart.length === 0){ alert('Carrinho vazio'); return; }
   if(navigator.geolocation){
+    isProcessingCheckout = true;
     document.getElementById('view').innerHTML = '<div class="loading">📍 Detectando sua localização...</div>';
     navigator.geolocation.getCurrentPosition(
       async function(position){
@@ -1086,10 +1091,12 @@ function startCheckout(){
         taxaEntrega = calcularTaxaEntrega(lat, lng);
         localizacaoData.taxaEntrega = taxaEntrega;
         
+        isProcessingCheckout = false;
         showDadosEntrega(localizacaoData);
       },
       function(error){
         console.log('Erro GPS:', error);
+        isProcessingCheckout = false;
         alert('❌ Localização obrigatória! Ative o GPS.');
         showCart();
       },
@@ -1225,46 +1232,72 @@ function showUploadComprovante(localizacaoData, descricao) {
   }
   
   window.finalizarPedidoComComprovante = async function(localizacao, descricao, mapaUrl, whatsapp, taxaEntregaValor) {
+    if (isProcessingCheckout) {
+      alert('⚠️ Já está processando um pedido. Aguarde...');
+      return;
+    }
+    
     if (!selectedFile) { alert('❌ Selecione um arquivo de comprovante primeiro!'); return; }
     
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-      const comprovanteBase64 = e.target.result;
-      let codigoPedido = Math.floor(Math.random() * 900 + 100);
+    isProcessingCheckout = true;
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = 'Processando...';
+    
+    try {
+      const reader = new FileReader();
       
-      const totalProdutos = cart.reduce((total, item) => total + (item.preco * item.qtd), 0);
-      const totalComTaxa = totalProdutos + taxaEntregaValor;
-      
-      let pedido = {
-        codigo: codigoPedido, 
-        produtos: [...cart], 
-        total: totalComTaxa,
-        taxaEntrega: taxaEntregaValor,
-        totalProdutos: totalProdutos,
-        local: localizacao, 
-        mapaUrl: mapaUrl, 
-        desc: descricao || '',
-        whatsapp: whatsapp, 
-        comprovante: comprovanteBase64, 
-        comprovanteNome: selectedFile.name, 
-        comprovanteTipo: selectedFile.type,
-        data: new Date().toLocaleString('pt-BR'), 
-        status: 'Pedido recebido - Aguardando confirmação do pagamento'
+      reader.onload = async function(e) {
+        const comprovanteBase64 = e.target.result;
+        let codigoPedido = Math.floor(Math.random() * 900 + 100);
+        
+        const totalProdutos = cart.reduce((total, item) => total + (item.preco * item.qtd), 0);
+        const totalComTaxa = totalProdutos + taxaEntregaValor;
+        
+        let pedido = {
+          codigo: codigoPedido, 
+          produtos: [...cart], 
+          total: totalComTaxa,
+          taxaEntrega: taxaEntregaValor,
+          totalProdutos: totalProdutos,
+          local: localizacao, 
+          mapaUrl: mapaUrl, 
+          desc: descricao || '',
+          whatsapp: whatsapp, 
+          comprovante: comprovanteBase64, 
+          comprovanteNome: selectedFile.name, 
+          comprovanteTipo: selectedFile.type,
+          data: new Date().toLocaleString('pt-BR'), 
+          status: '📦 Pedido recebido'
+        };
+        
+        orders.push(pedido);
+        
+        await sendTelegramNotification(pedido);
+        
+        alert(`✅ Pedido #${pedido.codigo} confirmado!\n💰 Total: R$ ${totalComTaxa.toFixed(2)}\n📍 Entrega em: ${localizacao}`);
+        
+        cart = []; 
+        saveToStorage(); 
+        showHome();
+        isProcessingCheckout = false;
       };
       
-      orders.push(pedido);
+      reader.onerror = function() { 
+        alert('❌ Erro ao ler o arquivo. Tente novamente.'); 
+        isProcessingCheckout = false;
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Finalizar Pedido';
+      };
       
-      await sendTelegramNotification(pedido);
+      reader.readAsDataURL(selectedFile);
       
-      alert(`✅ Pedido #${pedido.codigo} confirmado!\n💰 Total: R$ ${totalComTaxa.toFixed(2)}\n📍 Entrega em: ${localizacao}`);
-      
-      cart = []; 
-      saveToStorage(); 
-      showHome();
-    };
-    
-    reader.onerror = function() { alert('❌ Erro ao ler o arquivo. Tente novamente.'); };
-    reader.readAsDataURL(selectedFile);
+    } catch (error) {
+      console.error('Erro ao processar pedido:', error);
+      isProcessingCheckout = false;
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Finalizar Pedido';
+    }
   };
 }
 
