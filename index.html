@@ -398,12 +398,15 @@ async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
     if (pedido && messageIds[codigoPedido]) {
       const inlineKeyboard = {
         inline_keyboard: [
-          [ { text: "✅ Pago", callback_data: `status_${codigoPedido}_pago` }, { text: "👨‍🍳 Preparando", callback_data: `status_${codigoPedido}_preparando` } ],
-          [ { text: "🚚 Entrega", callback_data: `status_${codigoPedido}_entrega` }, { text: "🎉 Entregue", callback_data: `status_${codigoPedido}_entregue` } ],
+          [ { text: "✅ Pago", callback_data: `status_${codigoPedido}_pago` }, 
+            { text: "👨‍🍳 Preparando", callback_data: `status_${codigoPedido}_preparando` } ],
+          [ { text: "🚚 Entrega", callback_data: `status_${codigoPedido}_entrega` }, 
+            { text: "🎉 Entregue", callback_data: `status_${codigoPedido}_entregue` } ],
           [ { text: "❌ Cancelar", callback_data: `status_${codigoPedido}_cancelado` } ]
         ]
       };
       
+      // ATUALIZA com o NOVO status
       const message = `📦 *PEDIDO #${pedido.codigo}* - ${novoStatus}\n\n💰 *Total:* R$ ${pedido.total.toFixed(2)}\n📍 *Endereço:* ${pedido.local}\n📱 *Telefone:* ${pedido.whatsapp}\n📋 *Itens:* ${pedido.produtos.map(p => `${p.nome} (x${p.qtd})`).join(', ')}\n⏰ *Data:* ${pedido.data}`;
       
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
@@ -417,13 +420,11 @@ async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
           reply_markup: inlineKeyboard
         })
       });
-      
-      console.log(`✅ Mensagem Telegram ATUALIZADA: Pedido #${codigoPedido} - ${novoStatus}`);
     }
   } catch (error) {
     console.error('❌ Erro ao atualizar mensagem Telegram:', error);
   }
-}
+  }
 
 async function processarCallbackStatus(data, callbackObj) {
   const match = data.match(/status_(\d+)_(\w+)/);
@@ -431,23 +432,13 @@ async function processarCallbackStatus(data, callbackObj) {
   
   const codigo = parseInt(match[1]);
   const novoStatus = match[2].toLowerCase();
-  const chave = `pedido_${codigo}`;
   
-  if (pedidosBloqueados.has(chave)) {
-    if (callbackObj?.id) {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          callback_query_id: callbackObj.id,
-          text: 'Este pedido já foi concluído.',
-          show_alert: false
-        })
-      });
-    }
-    return;
-  }
+  // Busca o status atual do pedido
+  await carregarEstoque();
+  const produtosDoPedido = products.filter(p => p.pedido == codigo);
+  const statusAtual = produtosDoPedido.length > 0 ? produtosDoPedido[0].status.toLowerCase() : '';
   
+  // Mapeamento de status
   const statusMap = {
     'pago': '✅ Pagamento confirmado',
     'preparando': '👨‍🍳 Preparando pedido',
@@ -458,14 +449,81 @@ async function processarCallbackStatus(data, callbackObj) {
   
   const textoStatus = statusMap[novoStatus] || novoStatus;
   
-  if (novoStatus === 'entregue' || novoStatus === 'cancelado') {
-    pedidosBloqueados.add(chave);
+  // REGRAS DE SEQUÊNCIA
+  const ordemStatus = ['pago', 'preparando', 'entrega', 'entregue'];
+  
+  // 1. Se já está no MESMO status → "Botão já clicado"
+  if (statusAtual.includes(novoStatus) || statusAtual.includes(textoStatus.toLowerCase())) {
+    if (callbackObj?.id) {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          callback_query_id: callbackObj.id,
+          text: `Status já está como: ${textoStatus}`,
+          show_alert: false
+        })
+      });
+    }
+    return;
   }
   
+  // 2. Se tentar voltar na sequência → "Sequência errada"
+  if (novoStatus !== 'cancelado') {
+    const indexAtual = ordemStatus.findIndex(s => statusAtual.includes(s));
+    const indexNovo = ordemStatus.indexOf(novoStatus);
+    
+    if (indexAtual !== -1 && indexNovo !== -1 && indexNovo < indexAtual) {
+      if (callbackObj?.id) {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            callback_query_id: callbackObj.id,
+            text: `❌ Sequência incorreta! Status atual: ${statusAtual}`,
+            show_alert: true
+          })
+        });
+      }
+      return;
+    }
+  }
+  
+  // 3. Se já foi entregue ou cancelado → "Pedido já concluído"
+  if (statusAtual.includes('entregue') || statusAtual.includes('cancelado')) {
+    if (callbackObj?.id) {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          callback_query_id: callbackObj.id,
+          text: 'Este pedido já foi concluído.',
+          show_alert: true
+        })
+      });
+    }
+    return;
+  }
+  
+  // 4. Cancelar só pode ser clicado se não estiver entregue
+  if (novoStatus === 'cancelado' && statusAtual.includes('entregue')) {
+    if (callbackObj?.id) {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          callback_query_id: callbackObj.id,
+          text: 'Pedido já entregue não pode ser cancelado.',
+          show_alert: true
+        })
+      });
+    }
+    return;
+  }
+  
+  // SE PASSOU EM TODAS AS VALIDAÇÕES → Atualiza
   await atualizarStatusNaPlanilha(codigo, textoStatus);
-  
   await atualizarMensagemTelegramExistente(codigo, textoStatus);
-  
   await criarNovaNotificacaoParaStatus(codigo, textoStatus);
   
   if (callbackObj?.id) {
@@ -479,7 +537,7 @@ async function processarCallbackStatus(data, callbackObj) {
       })
     });
   }
-}
+  }
 
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
