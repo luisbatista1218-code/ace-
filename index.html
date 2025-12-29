@@ -426,6 +426,7 @@ async function atualizarMensagemTelegramExistente(codigoPedido, novoStatus) {
   }
   }
 
+
 async function processarCallbackStatus(data, callbackObj) {
   const match = data.match(/status_(\d+)_(\w+)/);
   if (!match) return;
@@ -436,12 +437,12 @@ async function processarCallbackStatus(data, callbackObj) {
   // Busca o status atual do pedido
   await carregarEstoque();
   const produtosDoPedido = products.filter(p => p.pedido == codigo);
-  const statusAtual = produtosDoPedido.length > 0 ? produtosDoPedido[0].status.toLowerCase() : '';
+  let statusAtualTexto = produtosDoPedido.length > 0 ? produtosDoPedido[0].status : '';
   
   // Mapeamento de status
   const statusMap = {
     'pago': '✅ Pagamento confirmado',
-    'preparando': '👨‍🍳 Preparando pedido',
+    'preparando': '👨‍🍳 Preparando pedido', 
     'entrega': '🚚 Saiu para entrega',
     'entregue': '🎉 Pedido entregue',
     'cancelado': '❌ Pedido cancelado'
@@ -449,48 +450,24 @@ async function processarCallbackStatus(data, callbackObj) {
   
   const textoStatus = statusMap[novoStatus] || novoStatus;
   
-  // REGRAS DE SEQUÊNCIA
-  const ordemStatus = ['pago', 'preparando', 'entrega', 'entregue'];
-  
-  // 1. Se já está no MESMO status → "Botão já clicado"
-  if (statusAtual.includes(novoStatus) || statusAtual.includes(textoStatus.toLowerCase())) {
+  // REGRA 1: Se já está no MESMO status → "Você já clicou aqui"
+  if (statusAtualTexto === textoStatus) {
     if (callbackObj?.id) {
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
           callback_query_id: callbackObj.id,
-          text: `Status já está como: ${textoStatus}`,
-          show_alert: false
+          text: `Você já clicou aqui! Status já está: ${textoStatus}`,
+          show_alert: true
         })
       });
     }
     return;
   }
   
-  // 2. Se tentar voltar na sequência → "Sequência errada"
-  if (novoStatus !== 'cancelado') {
-    const indexAtual = ordemStatus.findIndex(s => statusAtual.includes(s));
-    const indexNovo = ordemStatus.indexOf(novoStatus);
-    
-    if (indexAtual !== -1 && indexNovo !== -1 && indexNovo < indexAtual) {
-      if (callbackObj?.id) {
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            callback_query_id: callbackObj.id,
-            text: `❌ Sequência incorreta! Status atual: ${statusAtual}`,
-            show_alert: true
-          })
-        });
-      }
-      return;
-    }
-  }
-  
-  // 3. Se já foi entregue ou cancelado → "Pedido já concluído"
-  if (statusAtual.includes('entregue') || statusAtual.includes('cancelado')) {
+  // REGRA 2: Se já foi entregue → "Pedido já concluído" (NÃO MEXE - já funciona)
+  if (statusAtualTexto.includes('🎉 Pedido entregue') || statusAtualTexto.includes('❌ Pedido cancelado')) {
     if (callbackObj?.id) {
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
         method: 'POST',
@@ -505,23 +482,30 @@ async function processarCallbackStatus(data, callbackObj) {
     return;
   }
   
-  // 4. Cancelar só pode ser clicado se não estiver entregue
-  if (novoStatus === 'cancelado' && statusAtual.includes('entregue')) {
-    if (callbackObj?.id) {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          callback_query_id: callbackObj.id,
-          text: 'Pedido já entregue não pode ser cancelado.',
-          show_alert: true
-        })
-      });
+  // REGRA 3: Sequência correta (opcional - se você quer)
+  const ordemStatus = ['✅ Pagamento confirmado', '👨‍🍳 Preparando pedido', '🚚 Saiu para entrega', '🎉 Pedido entregue'];
+  if (novoStatus !== 'cancelado') {
+    const indexAtual = ordemStatus.indexOf(statusAtualTexto);
+    const indexNovo = ordemStatus.indexOf(textoStatus);
+    
+    // Se o status atual existe na sequência E o novo vem antes → erro
+    if (indexAtual !== -1 && indexNovo !== -1 && indexNovo < indexAtual) {
+      if (callbackObj?.id) {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            callback_query_id: callbackObj.id,
+            text: `❌ Sequência incorreta! Status atual: ${statusAtualTexto}`,
+            show_alert: true
+          })
+        });
+      }
+      return;
     }
-    return;
   }
   
-  // SE PASSOU EM TODAS AS VALIDAÇÕES → Atualiza
+  // SE PASSOU NAS REGRAS → Atualiza normalmente
   await atualizarStatusNaPlanilha(codigo, textoStatus);
   await atualizarMensagemTelegramExistente(codigo, textoStatus);
   await criarNovaNotificacaoParaStatus(codigo, textoStatus);
@@ -538,7 +522,7 @@ async function processarCallbackStatus(data, callbackObj) {
     });
   }
   }
-
+  
 async function atualizarStatusNaPlanilha(codigoPedido, novoStatus) {
   try {
     await carregarEstoque();
