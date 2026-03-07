@@ -468,7 +468,7 @@ async function carregarFolgas() {
     return [];
   }
 }
-// 🟢 FUNÇÃO 1: Carregar profissionais nos toggles - ESTRUTURA CORRIGIDA
+// 🟢 FUNÇÃO 1: Carregar profissionais nos toggles - SEM CRIAR TÍTULO
 async function carregarProfissionaisToggle() {
   const container = document.getElementById('profissionaisToggleContainer');
   if (!container) return;
@@ -485,17 +485,7 @@ async function carregarProfissionaisToggle() {
   
   let html = '';
   
-  // PRIMEIRO: O toggle GERAL que abre/fecha tudo
-  html += `
-    <div style="margin-bottom: 5px;">
-      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer;" onclick="toggleTodosProfissionais()">
-        <span style="font-size: 16px; color: #3b82f6; width: 20px;" id="trianguloTodos">▶</span>
-        <h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 600;">📋 Agendamentos</h3>
-      </div>
-    </div>
-  `;
-  
-  // Depois, cada profissional com seu próprio toggle
+  // SÓ OS PROFISSIONAIS, SEM O TÍTULO!
   for (const profissional of profissionais) {
     const agendamentosProfissional = agendamentos.filter(ag => {
       const servico = servicos.find(s => s.id === ag.servico_id);
@@ -509,11 +499,11 @@ async function carregarProfissionaisToggle() {
     
     html += `
       <div style="margin-bottom: 5px;" class="profissional-item-container">
-        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0 8px 20px; cursor: pointer;" onclick="toggleProfissional('${idConteudo}', '${idToggle}')">
-          <span style="font-size: 14px; color: #64748b; width: 16px;" id="${idToggle}">▶</span>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0 8px 0; cursor: pointer;" onclick="toggleProfissional('${idConteudo}', '${idToggle}')">
+          <span style="font-size: 16px; color: #64748b; width: 16px;" id="${idToggle}">▶</span>
           <h4 style="margin: 0; color: #334155; font-size: 16px; font-weight: 500;">👨‍💼 ${profissional} (${agendamentosProfissional.length})</h4>
         </div>
-        <div id="${idConteudo}" style="display: none; padding-left: 40px;">
+        <div id="${idConteudo}" style="display: none; padding-left: 24px;">
           ${gerarHtmlAgendamentosProfissional(agendamentosProfissional)}
         </div>
       </div>
@@ -564,7 +554,7 @@ function toggleProfissional(conteudoId, trianguloId) {
   }
 }
 
-// 🟢 FUNÇÃO 4: Gerar HTML dos agendamentos - SIMPLES E LIMPO
+// 🟢 FUNÇÃO 4: Gerar HTML dos agendamentos - TEXTO PROPORCIONAL E LEGÍVEL
 function gerarHtmlAgendamentosProfissional(agendamentosLista) {
   let html = '';
   agendamentosLista.forEach(ag => {
@@ -577,21 +567,21 @@ function gerarHtmlAgendamentosProfissional(agendamentosLista) {
     const dataFormatada = dataObj.toLocaleDateString('pt-BR');
     
     html += `
-      <div style="background: white; padding: 12px; margin-bottom: 8px; border-left: 3px solid #3b82f6; border-bottom: 1px solid #f1f5f9; position: relative;">
-        <button class="lixeira-individual" onclick="abrirModalExclusao('${ag.id}', 'admin')" style="position: absolute; top: 8px; right: 8px; background: #ef4444; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px;">🗑️</button>
-        <div><strong>Cliente:</strong> ${cliente.nome}</div>
-        <div><strong>Telefone:</strong> ${cliente.telefone}</div>
-        <div><strong>Data/Horário:</strong> ${dataFormatada} - ${ag.horario}</div>
-        <div><strong>Serviço:</strong> ${servico.nome}</div>
-        <div><strong>Profissional:</strong> ${servico.profissional}</div>
-        <div><strong>Status:</strong> confirmado</div>
-        <div><strong>Código:</strong> ${ag.codigo_confirmacao || ''}</div>
+      <div style="margin: 16px 0 20px 0; position: relative; padding-right: 35px; font-size: 15px; line-height: 1.6;">
+        <button onclick="abrirModalExclusao('${ag.id}', 'admin')" 
+                style="position: absolute; right: 0; top: 0; background: #ef4444; color: white; border: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px;">🗑️</button>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Cliente:</strong> <span style="color: #334155;">${cliente.nome}</span></div>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Telefone:</strong> <span style="color: #334155;">${cliente.telefone}</span></div>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Data/Horário:</strong> <span style="color: #334155;">${dataFormatada} - ${ag.horario}</span></div>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Serviço:</strong> <span style="color: #334155;">${servico.nome}</span></div>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Profissional:</strong> <span style="color: #334155;">${servico.profissional}</span></div>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Status:</strong> <span style="color: #059669; font-weight: 500;">confirmado</span></div>
+        <div style="margin-bottom: 3px;"><strong style="color: #1e293b;">Código:</strong> <span style="color: #3b82f6; font-weight: 600; letter-spacing: 0.5px;">${ag.codigo_confirmacao || ''}</span></div>
       </div>
     `;
   });
   return html;
 }
-  
 /*function toggleListaGeral() {
   const container = document.getElementById('todosAgendamentos');
   const triangulo = document.getElementById('trianguloGeral');
