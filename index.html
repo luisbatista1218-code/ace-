@@ -1036,9 +1036,12 @@ for (let dia = 1; dia <= ultimoDia.getDate(); dia++) {
   const eSelecionado = dataStr === dataSelecionada;
     
     let eFeriado = false;
-    if (folgas && folgas.length > 0) {
+ if (folgas && folgas.length > 0) {
+  eFeriado = folgas.some(f => f.data_folga === dataStr && f.profissional === null);
+}
+  /*   if (folgas && folgas.length > 0) {
       eFeriado = folgas.some(f => f.data_folga === dataStr);
-    }
+    }*/
     
     let classes = 'dia';
     if (eHoje) classes += ' hoje';
