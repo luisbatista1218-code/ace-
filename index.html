@@ -480,13 +480,8 @@ async function carregarFolgas() {
     return [];
   }
 }
-function toggleGeral() {
-  const div = document.getElementById('conteudo_geral');
-  const triangulo = document.getElementById('triangulo_geral');
-  div.style.display = div.style.display === 'none' ? 'block' : 'none';
-  triangulo.innerHTML = div.style.display === 'none' ? '▶' : '▼';
-}
-/*function toggleListaGeral() {
+
+function toggleListaGeral() {
   const container = document.getElementById('todosAgendamentos');
   const triangulo = document.getElementById('trianguloGeral');
   if (container.style.display === 'none') {
@@ -578,87 +573,8 @@ function gerarHtmlAgendamentosProfissional(agendamentosLista) {
     `;
   });
   return html;
-}*/
-async function carregarProfissionaisToggle() {
-  const container = document.getElementById('profissionaisToggleContainer');
-  if (!container) return;
-  
-  await carregarServicos();
-  await carregarClientes();
-  
-  const profissionais = [...new Set(servicos.map(s => s.profissional))];
-  
-  let html = `
-    <div style="margin-bottom: 15px; border: 2px solid #e2e8f0; border-radius: 10px;">
-      <div style="display: flex; align-items: center; gap: 10px; padding: 15px; background: #f8fafc; cursor: pointer;" onclick="toggleGeral()">
-        <span style="font-size: 20px; color: #3b82f6;" id="triangulo_geral">▶</span>
-        <h4 style="margin: 0;">📋 Agendamentos</h4>
-      </div>
-      <div id="conteudo_geral" style="display: none; padding: 15px;">
-  `;
-  
-  for (const profissional of profissionais) {
-    const agendamentosProfissional = agendamentos.filter(ag => {
-      const servico = servicos.find(s => s.id === ag.servico_id);
-      return servico && servico.profissional === profissional;
-    });
-    
-    if (agendamentosProfissional.length === 0) continue;
-    
-    const idToggle = `toggle_${profissional.replace(/\s+/g, '_')}`;
-    
-    html += `
-      <div style="margin-bottom: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f1f5f9; border-radius: 5px; cursor: pointer;" onclick="toggleProfissional('${idToggle}')">
-          <span style="font-size: 16px; color: #3b82f6;" id="triangulo_${idToggle}">▶</span>
-          <span>👨‍💼 ${profissional} (${agendamentosProfissional.length})</span>
-        </div>
-        <div id="${idToggle}" style="display: none; padding: 10px;">
-          ${gerarHtmlAgendamentosProfissional(agendamentosProfissional)}
-        </div>
-      </div>
-    `;
-  }
-  
-  html += `</div></div>`;
-  container.innerHTML = html;
 }
 
-function gerarHtmlAgendamentosProfissional(agendamentosLista) {
-  let html = '';
-  agendamentosLista.forEach(ag => {
-    const cliente = clientesCache[ag.cliente_id];
-    const servico = servicos.find(s => s.id === ag.servico_id);
-    if (!cliente || !servico) return;
-    
-    const [ano, mes, dia] = ag.data_agendamento.split('-').map(Number);
-    const dataObj = new Date(ano, mes - 1, dia);
-    const dataFormatada = dataObj.toLocaleDateString('pt-BR');
-    
-    html += `
-      <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 15px; border: 2px solid #e2e8f0; position: relative;">
-        <button class="lixeira-individual" onclick="abrirModalExclusao('${ag.id}', 'admin')">🗑️</button>
-        <div style="display: grid; gap: 8px;">
-          <div><strong>Cliente:</strong> ${cliente.nome}</div>
-          <div><strong>Telefone:</strong> ${cliente.telefone}</div>
-          <div><strong>Data/Horário:</strong> ${dataFormatada} - ${ag.horario}</div>
-          <div><strong>Serviço:</strong> ${servico.nome}</div>
-          <div><strong>Profissional:</strong> ${servico.profissional}</div>
-          <div><strong>Status:</strong> ${ag.status}</div>
-          <div><strong>Código:</strong> ${ag.codigo_confirmacao || ''}</div>
-        </div>
-      </div>
-    `;
-  });
-  return html;
-}
-
-function toggleProfissional(id) {
-  const div = document.getElementById(id);
-  const triangulo = document.getElementById(`triangulo_${id}`);
-  div.style.display = div.style.display === 'none' ? 'block' : 'none';
-  triangulo.innerHTML = div.style.display === 'none' ? '▶' : '▼';
-}
 // 🟢 FUNÇÃO 4: Carregar select de profissionais para concluído
 function carregarSelectProfissionaisConcluido() {
   const select = document.getElementById('selectProfissionalConcluido');
