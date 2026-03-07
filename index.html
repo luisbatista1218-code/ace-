@@ -192,7 +192,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <!-- Container dos profissionais -->
   <div id="profissionaisToggleContainer"></div>
   
-</div>
+</div> <!-- FECHA PARTE 1 -->
   
   <!-- PARTE 2: MARCAR COMO CONCLUÍDO -->
   <div class="form-admin" style="margin-bottom: 30px;">
@@ -474,7 +474,7 @@ async function carregarFolgas() {
 }
 
 // Carrega os toggles dos profissionais
-async function carregarProfissionaisToggle() {
+/*async function carregarProfissionaisToggle() {
   const container = document.getElementById('profissionaisToggleContainer');
   if (!container) return;
   
@@ -513,7 +513,7 @@ async function carregarProfissionaisToggle() {
   
   container.innerHTML = html || '<p style="text-align: center; padding: 20px; color: #64748b;">Nenhum agendamento</p>';
   container.style.display = togglePrincipalAberto ? 'block' : 'none';
-}
+}*/
 
 // GERAR HTML DOS AGENDAMENTOS (FORMATO SIMPLES E LIMPO)
 function gerarHtmlAgendamentos(lista) {
@@ -575,7 +575,7 @@ function toggleTodosProfissionais() {
     container.style.display = 'none';
     triangulo.innerHTML = '▶';
   }
-}
+}*/
 
   // 🟢 FUNÇÃO 1: Carregar profissionais nos toggles
 async function carregarProfissionaisToggle() {
@@ -618,7 +618,7 @@ async function carregarProfissionaisToggle() {
 }
 
 // 🟢 FUNÇÃO 2: Abrir/fechar toggle do profissional
-function toggleProfissional(id) {
+/*function toggleProfissional(id) {
   const div = document.getElementById(id);
   const triangulo = document.getElementById(`triangulo_${id}`);
   
