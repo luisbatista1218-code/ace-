@@ -737,37 +737,44 @@ async function carregarAgendamentosPorProfissionalConcluido() {
   const selectProf = document.getElementById('selectProfissionalConcluido');
   const selectAg = document.getElementById('selectAgendamentoConcluido');
   
-  if (!selectProf || !selectAg) return;
+  if (!selectProf || !selectAg) {
+    console.log('Selects não encontrados');
+    return;
+  }
   
   const profissional = selectProf.value;
   
   if (!profissional) {
     selectAg.innerHTML = '<option value="">Selecione um profissional</option>';
+    document.getElementById('detalhesAgendamentoConcluido').style.display = 'none';
     return;
   }
   
   selectAg.innerHTML = '<option value="">Carregando...</option>';
   
+  // FILTRA SÓ OS NÃO CONCLUÍDOS (sem cancelado)
   const agendamentosFiltrados = agendamentos.filter(ag => {
-    if (ag.status === 'concluido' || ag.status === 'cancelado') return false;
+    if (ag.status === 'concluido') return false;
     const servico = servicos.find(s => s.id === ag.servico_id);
     return servico && servico.profissional === profissional;
   });
   
   if (agendamentosFiltrados.length === 0) {
-    selectAg.innerHTML = '<option value="">Nenhum agendamento</option>';
+    selectAg.innerHTML = '<option value="">Nenhum agendamento pendente</option>';
+    document.getElementById('detalhesAgendamentoConcluido').style.display = 'none';
     return;
   }
   
-  let html = '<option value="">Selecione</option>';
+  let html = '<option value="">Selecione um agendamento</option>';
   
   agendamentosFiltrados.forEach(ag => {
     const cliente = clientesCache[ag.cliente_id];
     const servico = servicos.find(s => s.id === ag.servico_id);
-    if (!cliente || !servico) return;
     
-    const data = new Date(ag.data_agendamento).toLocaleDateString('pt-BR');
-    html += `<option value="${ag.id}">${data} ${ag.horario} - ${cliente.nome}</option>`;
+    if (cliente && servico) {
+      const data = new Date(ag.data_agendamento + 'T12:00:00').toLocaleDateString('pt-BR');
+      html += `<option value="${ag.id}">${data} ${ag.horario} - ${cliente.nome}</option>`;
+    }
   });
   
   selectAg.innerHTML = html;
