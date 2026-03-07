@@ -2142,7 +2142,7 @@ async function entrarAdmin() {
   }
 }
 
-async function carregarAdmin() {
+/*async function carregarAdmin() {
   if (!verificarSessaoAdmin()) { mostrarLoginAdmin(); return; }
 
   document.getElementById('todosAgendamentos').style.display = 'block';
@@ -2168,8 +2168,36 @@ async function carregarAdmin() {
   } catch (error) {
     mostrarMensagem('Erro ao carregar admin', 'erro');
   }
-}
+}*/
+async function carregarAdmin() {
+  if (!verificarSessaoAdmin()) { mostrarLoginAdmin(); return; }
 
+  // 🚫 REMOVI as linhas que mexiam com todosAgendamentos e trianguloGeral
+  // (já que você removeu eles do HTML)
+  
+  try {
+    await Promise.all([carregarAgendamentos(), carregarServicos(), carregarConfiguracoes(), carregarFolgas(), carregarClientes()]);
+    
+    // ✅ SÓ ISSO AQUI É O QUE IMPORTA AGORA
+    await carregarProfissionaisToggle(); 
+    
+    carregarSelectProfissionais();
+    carregarSelectProfissionaisConcluido();
+    carregarSelectProfissionaisFolga();
+    carregarServicosAdmin();
+    
+    if (configuracoes.horario_almoco_inicio) document.getElementById('almocoInicio').value = configuracoes.horario_almoco_inicio;
+    if (configuracoes.horario_almoco_fim) document.getElementById('almocoFim').value = configuracoes.horario_almoco_fim;
+    
+    const hoje = new Date();
+    const hojeFormatado = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+    document.getElementById('dataFolga').min = hojeFormatado;
+    document.getElementById('dataFolga').value = hojeFormatado;
+    
+  } catch (error) {
+    mostrarMensagem('Erro ao carregar admin', 'erro');
+  }
+}
 function carregarTodosAgendamentos() {
   const container = document.getElementById('todosAgendamentos');
   
