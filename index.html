@@ -180,28 +180,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <button class="voltar-btn" onclick="sairAdmin()">← Sair do ADM</button>
   <h2 class="titulo-secao">⚙️ Área Administrativa</h2>
   
-  <!-- PARTE 1: AGENDAMENTOS POR PROFISSIONAL -->
-  <div style="margin-bottom: 30px; background: white; border-radius: 12px; padding: 20px; border: 2px solid #e2e8f0;">
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-      <h3 style="color: #475569; font-size: 18px; margin: 0;">📋 Agendamentos</h3>
-    </div>
-    
-    <select class="form-input" id="selectProfissionalFiltro" style="margin-bottom: 15px;" onchange="filtrarAgendamentosPorProfissional()">
-      <option value="">profissional</option>
-    </select>
-    
-    <div id="profissionaisToggleContainer"></div>
-    
-    <div style="margin-top: 20px;">
-      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-        <h3 style="color: #475569; font-size: 18px; margin: 0;">📋 Todos Agendamentos</h3>
-        <span onclick="toggleListaGeral()" style="cursor: pointer; font-size: 22px; color: #3b82f6; font-weight: bold;" id="trianguloGeral">▼</span>
-      </div>
-      <div class="lista-agendamentos-admin" id="todosAgendamentos" style="display: block;">
-        <div class="loading"><div class="loading-spinner"></div>Carregando...</div>
-      </div>
-    </div>
+<!-- PARTE 1: AGENDAMENTOS POR PROFISSIONAL -->
+<div style="margin-bottom: 30px; background: white; border-radius: 12px; padding: 20px; border: 2px solid #e2e8f0;">
+  
+  <!-- Toggle principal -->
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; cursor: pointer;" onclick="toggleTodosProfissionais()">
+    <span style="font-size: 24px; color: #3b82f6;" id="trianguloPrincipal">▼</span>
+    <h3 style="color: #1e293b; font-size: 20px; margin: 0;">📋 Agendamentos</h3>
   </div>
+  
+  <!-- Container dos profissionais -->
+  <div id="profissionaisToggleContainer"></div>
+  
+</div>
   
   <!-- PARTE 2: MARCAR COMO CONCLUÍDO -->
   <div class="form-admin" style="margin-bottom: 30px;">
@@ -422,6 +413,7 @@ let folgas = [];
 let servicoEditando = null;
 let clientesCache = {};
 let verAgendamento = true;
+let togglePrincipalAberto = true;
   
 async function carregarServicos() {
   try {
@@ -481,7 +473,99 @@ async function carregarFolgas() {
   }
 }
 
-function toggleListaGeral() {
+// Carrega os toggles dos profissionais
+async function carregarProfissionaisToggle() {
+  const container = document.getElementById('profissionaisToggleContainer');
+  if (!container) return;
+  
+  await carregarServicos();
+  await carregarClientes();
+  
+  const profissionais = [...new Set(servicos.map(s => s.profissional))];
+  let html = '';
+  
+  for (const profissional of profissionais) {
+    // Pega agendamentos deste profissional
+    const agendamentosProfissional = agendamentos.filter(ag => {
+      const servico = servicos.find(s => s.id === ag.servico_id);
+      return servico && servico.profissional === profissional;
+    });
+    
+    if (agendamentosProfissional.length === 0) continue;
+    
+    const idToggle = `toggle_${profissional.replace(/\s+/g, '_')}`;
+    
+    html += `
+      <div style="margin-bottom: 15px;">
+        <!-- CABEÇALHO DO PROFISSIONAL -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 12px; background: #f8fafc; border-radius: 8px; cursor: pointer;" onclick="toggleProfissional('${idToggle}')">
+          <span style="font-size: 18px; color: #3b82f6;" id="triangulo_${idToggle}">▶</span>
+          <span style="font-weight: 600;">👨‍💼 ${profissional} (${agendamentosProfissional.length})</span>
+        </div>
+        
+        <!-- AGENDAMENTOS DO PROFISSIONAL -->
+        <div id="${idToggle}" style="display: none; padding-left: 30px;">
+          ${gerarHtmlAgendamentos(agendamentosProfissional)}
+        </div>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html || '<p style="text-align: center; padding: 20px; color: #64748b;">Nenhum agendamento</p>';
+  container.style.display = togglePrincipalAberto ? 'block' : 'none';
+}
+
+// GERAR HTML DOS AGENDAMENTOS (FORMATO SIMPLES E LIMPO)
+function gerarHtmlAgendamentos(lista) {
+  let html = '';
+  lista.forEach(ag => {
+    const cliente = clientesCache[ag.cliente_id];
+    const servico = servicos.find(s => s.id === ag.servico_id);
+    if (!cliente || !servico) return;
+    
+    const [ano, mes, dia] = ag.data_agendamento.split('-').map(Number);
+    const dataObj = new Date(ano, mes - 1, dia);
+    const dataFormatada = dataObj.toLocaleDateString('pt-BR');
+    
+    html += `
+      <div style="border-bottom: 1px solid #e2e8f0; padding: 15px 0; margin: 0 5px; position: relative;">
+        <button onclick="abrirModalExclusao('${ag.id}', 'admin')" style="position: absolute; top: 10px; right: 0; background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px;">🗑️</button>
+        
+        <div style="color: #1e293b; font-size: 14px; line-height: 1.6;">
+          <div><span style="color: #64748b;">Cliente:</span> ${cliente.nome} <span style="color: #64748b; margin-left: 15px;">Tel:</span> ${cliente.telefone}</div>
+          <div><span style="color: #64748b;">Data:</span> ${dataFormatada} - ${ag.horario} <span style="color: #64748b; margin-left: 15px;">Serviço:</span> ${servico.nome}</div>
+          <div><span style="color: #64748b;">Prof:</span> ${servico.profissional} <span style="color: #64748b; margin-left: 15px;">Status:</span> ${ag.status} <span style="color: #64748b; margin-left: 15px;">Código:</span> <span style="color: #3b82f6;">${ag.codigo_confirmacao || ''}</span></div>
+        </div>
+      </div>
+    `;
+  });
+  return html;
+}
+
+// Abre/fecha UM profissional
+function toggleProfissional(id) {
+  const div = document.getElementById(id);
+  const triangulo = document.getElementById(`triangulo_${id}`);
+  
+  if (div.style.display === 'none') {
+    div.style.display = 'block';
+    triangulo.innerHTML = '▼';
+  } else {
+    div.style.display = 'none';
+    triangulo.innerHTML = '▶';
+  }
+}
+
+// Abre/fecha TODOS os profissionais
+function toggleTodosProfissionais() {
+  togglePrincipalAberto = !togglePrincipalAberto;
+  const container = document.getElementById('profissionaisToggleContainer');
+  const triangulo = document.getElementById('trianguloPrincipal');
+  
+  container.style.display = togglePrincipalAberto ? 'block' : 'none';
+  triangulo.innerHTML = togglePrincipalAberto ? '▼' : '▶';
+}  
+/*function toggleListaGeral() {
   const container = document.getElementById('todosAgendamentos');
   const triangulo = document.getElementById('trianguloGeral');
   if (container.style.display === 'none') {
@@ -781,7 +865,7 @@ function filtrarAgendamentosPorProfissional() {
       }
     }
   });
-}
+}*/
   
 async function adicionarServico() {
   const nome = document.getElementById('editarServicoNome').value.trim();
