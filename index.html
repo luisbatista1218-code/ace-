@@ -521,32 +521,31 @@ function toggleProfissional(conteudoId, trianguloId) {
   }
 }
 
-// 🟢 FUNÇÃO 3: Gerar HTML dos agendamentos (IGUALZINHO AO ORIGINAL)
+// 🟢 FUNÇÃO 3: Gerar HTML dos agendamentos (layout igual ao original)
 function gerarHtmlAgendamentos(agendamentosLista) {
   let html = '';
-  
   agendamentosLista.forEach(ag => {
     const cliente = clientesCache[ag.cliente_id];
     const servico = servicos.find(s => s.id === ag.servico_id);
     if (!cliente || !servico) return;
-    
     const [ano, mes, dia] = ag.data_agendamento.split('-');
     const dataFormatada = `${dia}/${mes}/${ano}`;
     const statusColor = ag.status === 'concluido' ? '#10b981' : '#3b82f6';
-    
     html += `
-      <div style="margin: 20px 0; position: relative; font-family: monospace; white-space: pre; font-size: 14px;">
-        <button onclick="abrirModalExclusao('${ag.id}', 'admin')" 
-                style="position: absolute; right: 0; top: 0; background: #ef4444; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-family: monospace;">🗑️</button>
-        <div>Cliente: ${cliente.nome.padEnd(25)} Telefone: ${cliente.telefone}</div>
-        <div>Data/Horário: ${dataFormatada} Serviço: ${servico.nome.substring(0,10)}</div>
-        <div> - ${ag.horario.padStart(8)}</div>
-        <div>Profissional: <span style="color: #3b82f6;">${servico.profissional}</span> Status: <span style="color: ${statusColor};">${ag.status}</span></div>
-        <div>Código: <span style="color: #3b82f6;">${ag.codigo_confirmacao || ''}</span></div>
+    <div style="margin:15px 0; padding:15px; background:#f9fafb; border-radius:10px; position:relative; font-size:14px;">
+      <button onclick="abrirModalExclusao('${ag.id}', 'admin')" style="position:absolute; right:10px; top:10px; background:#ef4444; color:white; border:none; width:28px; height:28px; border-radius:50%; cursor:pointer;">🗑</button>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 20px;">
+        <div><b>Cliente:</b> ${cliente.nome}</div>
+        <div><b>Telefone:</b> ${cliente.telefone}</div>
+        <div><b>Data/Horário:</b> ${dataFormatada} - ${ag.horario}</div>
+        <div><b>Serviço:</b> ${servico.nome}</div>
+        <div><b>Profissional:</b> <span style="color:#3b82f6;">${servico.profissional}</span></div>
+        <div><b>Status:</b> <span style="color:${statusColor};">${ag.status}</span></div>
+        <div style="grid-column:1 / span 2;"><b>Código:</b> <span style="color:#3b82f6;">${ag.codigo_confirmacao || ''}</span></div>
       </div>
+    </div>
     `;
   });
-  
   return html;
 }
 /*function toggleListaGeral() {
