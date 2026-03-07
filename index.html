@@ -182,16 +182,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   
 <!-- PARTE 1: AGENDAMENTOS POR PROFISSIONAL - COM TRIÂNGULO NO FIXO -->
 <div style="margin-bottom: 30px; background: white; border-radius: 12px; padding: 20px; border: 2px solid #e2e8f0;">
-  
-  <!-- AGORA O TÍTULO FIXO TEM TRIÂNGULO E FUNÇÃO -->
-  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer;" onclick="toggleTodosProfissionais()">
-    <span style="font-size: 20px; color: #3b82f6; width: 24px;" id="trianguloTodos">▶</span>
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
     <h3 style="color: #475569; font-size: 18px; margin: 0;">📋 Agendamentos</h3>
   </div>
-  
-  <!-- CONTAINER DOS PROFISSIONAIS -->
   <div id="profissionaisToggleContainer"></div>
-  
 </div>
   
   <!-- PARTE 2: MARCAR COMO CONCLUÍDO -->
@@ -472,7 +466,7 @@ async function carregarFolgas() {
   }
 }
 
-// 🟢 FUNÇÃO 1: Carregar profissionais (SÓ OS PROFISSIONAIS, SEM TÍTULO)
+// 🟢 FUNÇÃO 1: Carregar profissionais (SEM TÍTULO, SÓ ELES)
 async function carregarProfissionaisToggle() {
   const container = document.getElementById('profissionaisToggleContainer');
   if (!container) return;
@@ -484,7 +478,6 @@ async function carregarProfissionaisToggle() {
   
   let html = '';
   
-  // SÓ OS PROFISSIONAIS (O TÍTULO JÁ ESTÁ NO HTML FIXO)
   for (const profissional of profissionais) {
     const agendamentosProfissional = agendamentos.filter(ag => {
       const servico = servicos.find(s => s.id === ag.servico_id);
@@ -493,17 +486,19 @@ async function carregarProfissionaisToggle() {
     
     if (agendamentosProfissional.length === 0) continue;
     
-    const idToggle = `toggle_${profissional.replace(/\s+/g, '_')}`;
     const idConteudo = `conteudo_${profissional.replace(/\s+/g, '_')}`;
+    const idTriangulo = `triangulo_${profissional.replace(/\s+/g, '_')}`;
     
     html += `
       <div style="margin-bottom: 5px;">
-        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer;" onclick="toggleProfissional('${idConteudo}', '${idToggle}')">
-          <span style="font-size: 16px; color: #64748b; width: 16px;" id="${idToggle}">▶</span>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer;" 
+             onclick="toggleProfissional('${idConteudo}', '${idTriangulo}')">
+          <span style="font-size: 16px; color: #64748b; width: 16px;" id="${idTriangulo}">▶</span>
           <span style="color: #334155; font-size: 16px;">👨‍💼 ${profissional} (${agendamentosProfissional.length})</span>
         </div>
+        
         <div id="${idConteudo}" style="display: none; padding-left: 24px;">
-          ${gerarHtmlAgendamentosProfissional(agendamentosProfissional)}
+          ${gerarHtmlAgendamentos(agendamentosProfissional)}
         </div>
       </div>
     `;
@@ -512,30 +507,12 @@ async function carregarProfissionaisToggle() {
   container.innerHTML = html || '<p style="padding: 20px; color: #64748b;">Nenhum agendamento</p>';
 }
 
-// 🟢 FUNÇÃO 2: Toggle para ABRIR/FECHAR TODOS (usado pelo título fixo)
-function toggleTodosProfissionais() {
-  const trianguloTodos = document.getElementById('trianguloTodos');
-  const container = document.getElementById('profissionaisToggleContainer');
-  const todosConteudos = container.querySelectorAll('[id^="conteudo_"]');
-  const todosToggles = container.querySelectorAll('[id^="toggle_"]');
-  
-  if (trianguloTodos.innerHTML === '▶') {
-    trianguloTodos.innerHTML = '▼';
-    todosConteudos.forEach(div => div.style.display = 'block');
-    todosToggles.forEach(tri => tri.innerHTML = '▼');
-  } else {
-    trianguloTodos.innerHTML = '▶';
-    todosConteudos.forEach(div => div.style.display = 'none');
-    todosToggles.forEach(tri => tri.innerHTML = '▶');
-  }
-}
-
-// 🟢 FUNÇÃO 3: Toggle para profissional individual
+// 🟢 FUNÇÃO 2: Toggle do profissional
 function toggleProfissional(conteudoId, trianguloId) {
   const conteudo = document.getElementById(conteudoId);
   const triangulo = document.getElementById(trianguloId);
   
-  if (conteudo.style.display === 'none' || conteudo.style.display === '') {
+  if (conteudo.style.display === 'none') {
     conteudo.style.display = 'block';
     triangulo.innerHTML = '▼';
   } else {
@@ -544,22 +521,23 @@ function toggleProfissional(conteudoId, trianguloId) {
   }
 }
 
-// 🟢 FUNÇÃO 4: Gerar HTML dos agendamentos - EXATAMENTE IGUAL AO ANTIGO
-function gerarHtmlAgendamentosProfissional(agendamentosLista) {
+// 🟢 FUNÇÃO 3: Gerar HTML dos agendamentos (EXATAMENTE IGUAL AO ANTIGO)
+function gerarHtmlAgendamentos(agendamentosLista) {
   let html = '';
+  
   agendamentosLista.forEach(ag => {
     const cliente = clientesCache[ag.cliente_id];
     const servico = servicos.find(s => s.id === ag.servico_id);
     if (!cliente || !servico) return;
     
-    const [ano, mes, dia] = ag.data_agendamento.split('-').map(Number);
-    const dataObj = new Date(ano, mes - 1, dia);
-    const dataFormatada = dataObj.toLocaleDateString('pt-BR');
-    const statusColor = ag.status === 'concluido' ? '#10b981' : ag.status === 'confirmado' ? '#3b82f6' : '#ef4444';
+    const [ano, mes, dia] = ag.data_agendamento.split('-');
+    const dataFormatada = `${dia}/${mes}/${ano}`;
+    const statusColor = ag.status === 'concluido' ? '#10b981' : '#3b82f6';
     
     html += `
-      <div style="position: relative; margin-bottom: 15px; padding-right: 30px;">
-        <button class="lixeira-individual" onclick="abrirModalExclusao('${ag.id}', 'admin')" style="position: absolute; top: 0; right: 0; background: #ef4444; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px;">🗑️</button>
+      <div style="margin: 15px 0; position: relative; padding-right: 30px;">
+        <button onclick="abrirModalExclusao('${ag.id}', 'admin')" 
+                style="position: absolute; right: 0; top: 0; background: #ef4444; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; cursor: pointer;">🗑️</button>
         <div><strong>Cliente:</strong> ${cliente.nome}</div>
         <div><strong>Telefone:</strong> ${cliente.telefone}</div>
         <div><strong>Data/Horário:</strong> ${dataFormatada} - ${ag.horario}</div>
@@ -570,9 +548,9 @@ function gerarHtmlAgendamentosProfissional(agendamentosLista) {
       </div>
     `;
   });
+  
   return html;
 }
-
 /*function toggleListaGeral() {
   const container = document.getElementById('todosAgendamentos');
   const triangulo = document.getElementById('trianguloGeral');
