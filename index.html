@@ -1220,7 +1220,7 @@ async function carregarHorarios() {
   try {
     await Promise.all([carregarAgendamentos(), carregarConfiguracoes(), carregarFolgas()]);
     
-const eFolgaGeral = folgas.some(f => f.data_folga === dataSelecionada && f.profissional === null);
+/*const eFolgaGeral = folgas.some(f => f.data_folga === dataSelecionada && f.profissional === null);
 if (eFolgaGeral) {
   container.innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">🏖️<br><h3>Folga Geral</h3><p>Não há atendimento nesta data</p></div>';
   return;
@@ -1233,7 +1233,7 @@ const profissionalFolga = folgas.some(f =>
 if (profissionalFolga) {
   container.innerHTML = `<div style="text-align: center; padding: 40px; color: #ef4444;">🏖️<br><h3>Profissional em folga</h3><p>Escolha outro profissional</p><button class="btn-limpar" onclick="mostrarProfissionais()">Voltar</button></div>`;
   return;
-}
+}*/
     
     const servicosDoProfissional = servicos.filter(s => s.profissional === profissionalSelecionado);
     
