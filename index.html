@@ -1193,9 +1193,12 @@ async function carregarProfissionais() {
     await carregarServicos();
     await carregarFolgas();
     
-    // ✅ PASSO 1: Verifica se é FOLGA GERAL (bloqueia tudo)
-    const folgaGeral = folgas.find(f => f.data_folga === dataSelecionada && f.profissional === null);
-    if (folgaGeral) {
+    // ✅ CORRIGIDO: Verifica se TEM folga geral (some, não find)
+    const temFolgaGeral = folgas.some(f => f.data_folga === dataSelecionada && f.profissional === null);
+    
+    if (temFolgaGeral) {
+      // Só bloqueia tudo se for folga GERAL
+      const folgaGeral = folgas.find(f => f.data_folga === dataSelecionada && f.profissional === null);
       container.innerHTML = `
         <div style="text-align: center; padding: 40px; color: #ef4444;">
           🏖️<br>
@@ -1209,7 +1212,7 @@ async function carregarProfissionais() {
       return;
     }
     
-    // ✅ PASSO 2: Pega todos os profissionais únicos dos serviços
+    // PASSO 2: Pega todos os profissionais únicos dos serviços
     const profissionaisUnicos = [...new Set(servicos.map(s => s.profissional))];
     
     if (profissionaisUnicos.length === 0) {
@@ -1217,15 +1220,15 @@ async function carregarProfissionais() {
       return;
     }
     
-    // ✅ PASSO 3: Mapeia as folgas por profissional para acesso rápido
-    const folgasDoDia = {};
+    // PASSO 3: Mapeia as folgas INDIVIDUAIS
+    const folgasIndividuais = {};
     folgas.forEach(f => {
-      if (f.data_folga === dataSelecionada && f.profissional) {
-        folgasDoDia[f.profissional] = f.motivo || 'Folga';
+      if (f.data_folga === dataSelecionada && f.profissional !== null) {
+        folgasIndividuais[f.profissional] = f.motivo || 'Folga';
       }
     });
     
-    // ✅ PASSO 4: Gera o HTML para cada profissional
+    // PASSO 4: Gera o HTML
     let html = '';
     profissionaisUnicos.forEach(profissional => {
       const servicosDoProfissional = servicos.filter(s => s.profissional === profissional);
@@ -1237,10 +1240,10 @@ async function carregarProfissionais() {
       ).join('');
       
       // Verifica se este profissional específico está de folga
-      const estaDeFolga = folgasDoDia.hasOwnProperty(profissional);
+      const estaDeFolga = folgasIndividuais.hasOwnProperty(profissional);
       
       if (estaDeFolga) {
-        // ✅ PROFISSIONAL DE FOLGA: mostra em vermelho, SEM clique
+        // PROFISSIONAL DE FOLGA: vermelho, SEM clique
         html += `
           <div class="profissional-item" style="background: #fee2e2; border-color: #ef4444; opacity: 0.8; cursor: not-allowed; border-left: 8px solid #ef4444;" title="Profissional em folga">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1248,9 +1251,6 @@ async function carregarProfissionais() {
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                   <h3 style="font-size: 20px; color: #dc2626; margin: 0;">👨‍💼 ${profissional}</h3>
                   <span style="background: #ef4444; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;">🏖️ FOLGA</span>
-                </div>
-                <div style="color: #991b1b; background: rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 8px;">
-                  <strong>Motivo:</strong> ${folgasDoDia[profissional]}
                 </div>
                 <div style="color: #64748b; font-size: 14px; margin-top: 10px;">
                   <strong style="color: #475569;">Serviços:</strong>
@@ -1261,7 +1261,7 @@ async function carregarProfissionais() {
           </div>
         `;
       } else {
-        // ✅ PROFISSIONAL DISPONÍVEL: mostra normal, COM clique
+        // PROFISSIONAL DISPONÍVEL: normal, COM clique
         html += `
           <div class="profissional-item" onclick="selecionarProfissional('${profissional}')" style="cursor: pointer; border-left: 8px solid #10b981; transition: all 0.2s ease;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1282,22 +1282,11 @@ async function carregarProfissionais() {
       }
     });
     
-    // ✅ PASSO 5: Se não gerou nenhum profissional (improvável, mas seguro)
-    if (!html) {
-      html = '<div style="text-align: center; padding: 40px; color: #64748b;">👨‍💼<br><h3>Nenhum profissional disponível</h3></div>';
-    }
-    
     container.innerHTML = html;
     
   } catch (error) {
-    console.error('Erro em carregarProfissionais:', error);
-    container.innerHTML = `
-      <div style="text-align: center; padding: 40px; color: #ef4444;">
-        ⚠️<br>
-        <h3>Erro ao carregar</h3>
-        <button class="btn-limpar" onclick="carregarProfissionais()" style="margin-top: 20px;">Tentar novamente</button>
-      </div>
-    `;
+    console.error('Erro:', error);
+    container.innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">⚠️ Erro</div>';
   }
 }
   
