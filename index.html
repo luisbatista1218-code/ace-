@@ -736,23 +736,18 @@ async function carregarAgendamentosPorProfissionalConcluido() {
 
 // 🟢 FUNÇÃO 6: Marcar concluído por profissional
 async function marcarConcluidoPorProfissional() {
-  const selectAg = document.getElementById('selectAgendamentoConcluido');
+  // USANDO O SELECT QUE JÁ EXISTE
+  const selectAg = document.getElementById('selectAgendamento');
   
-  // PEGA O OPTION SELECIONADO
-  const optionSelecionada = selectAg.options[selectAg.selectedIndex];
-  const agendamentoId = optionSelecionada.value;
-  
-  console.log('ID completo:', agendamentoId);
-  console.log('Tamanho:', agendamentoId.length);
-  
-  if (!agendamentoId || agendamentoId === '') {
-    mostrarMensagem('Selecione um agendamento válido!', 'erro');
+  if (!selectAg) {
+    mostrarMensagem('Erro: select não encontrado', 'erro');
     return;
   }
   
-  // VERIFICA SE É UUID (36 caracteres)
-  if (agendamentoId.length !== 36) {
-    mostrarMensagem('ID de agendamento inválido!', 'erro');
+  const agendamentoId = selectAg.value;
+  
+  if (!agendamentoId) {
+    mostrarMensagem('Selecione um agendamento!', 'erro');
     return;
   }
   
@@ -765,6 +760,7 @@ async function marcarConcluidoPorProfissional() {
     mostrarMensagem('Agendamento concluído! ✅', 'sucesso');
     await carregarAgendamentos();
     
+    // Recarrega tudo
     carregarTodosAgendamentos();
     carregarProfissionaisToggle();
     carregarSelectProfissionaisConcluido();
