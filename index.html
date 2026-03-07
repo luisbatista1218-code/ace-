@@ -1111,7 +1111,8 @@ async function carregarProfissionais() {
     // 🔴 VERIFICA APENAS FOLGA GERAL (sem profissional específico)
     const eFolgaGeral = folgas.some(f => f.data_folga === dataSelecionada && (!f.profissional || f.profissional === ''));
     if (eFolgaGeral) {
-      const motivo = folgas.find(f => f.data_folga === dataSelecionada && (!f.profissional || f.profissional === ''))?.motivo || 'Folga';
+      const motivo = folgas.find(f => f.data_folga === dataSelecionada && f.profissional === null)?.motivo || 'Folga';
+      //const motivo = folgas.find(f => f.data_folga === dataSelecionada && (!f.profissional || f.profissional === ''))?.motivo || 'Folga';
       container.innerHTML = `
         <div style="text-align: center; padding: 40px; color: #ef4444;">
           🏖️<br>
