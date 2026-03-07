@@ -491,11 +491,10 @@ async function carregarProfissionaisToggle() {
     
     html += `
       <div style="margin-bottom: 5px;">
-        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer;" 
-             onclick="toggleProfissional('${idConteudo}', '${idTriangulo}')">
-          <span style="font-size: 16px; color: #64748b; width: 16px;" id="${idTriangulo}">▶</span>
-          <span style="color: #334155; font-size: 16px;">👨‍💼 ${profissional} (${agendamentosProfissional.length})</span>
-        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; cursor:pointer;" onclick="toggleProfissional('${idConteudo}', '${idTriangulo}')">
+       <span style="color:#334155; font-size:16px;">👨‍💼 ${profissional} (${agendamentosProfissional.length})</span>
+       <span style="font-size:16px; color:#64748b;" id="${idTriangulo}">▶</span>
+    </div>
         
         <div id="${idConteudo}" style="display: none; padding-left: 24px;">
           ${gerarHtmlAgendamentos(agendamentosProfissional)}
