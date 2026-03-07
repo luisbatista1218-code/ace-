@@ -674,7 +674,7 @@ function carregarSelectProfissionaisConcluido() {
 }
 
 // 🟢 FUNÇÃO 5: Carregar agendamentos por profissional para concluído
-async function carregarAgendamentosPorProfissionalConcluido() {
+/*async function carregarAgendamentosPorProfissionalConcluido() {
   const selectProf = document.getElementById('selectProfissionalConcluido');
   const selectAg = document.getElementById('selectAgendamentoConcluido');
   const profissional = selectProf.value;
@@ -732,12 +732,50 @@ async function carregarAgendamentosPorProfissionalConcluido() {
       document.getElementById('detalhesAgendamentoConcluido').style.display = 'none';
     }
   });
+}*/
+async function carregarAgendamentosPorProfissionalConcluido() {
+  const selectProf = document.getElementById('selectProfissionalConcluido');
+  const selectAg = document.getElementById('selectAgendamentoConcluido');
+  
+  if (!selectProf || !selectAg) return;
+  
+  const profissional = selectProf.value;
+  
+  if (!profissional) {
+    selectAg.innerHTML = '<option value="">Selecione um profissional</option>';
+    return;
+  }
+  
+  selectAg.innerHTML = '<option value="">Carregando...</option>';
+  
+  const agendamentosFiltrados = agendamentos.filter(ag => {
+    if (ag.status === 'concluido' || ag.status === 'cancelado') return false;
+    const servico = servicos.find(s => s.id === ag.servico_id);
+    return servico && servico.profissional === profissional;
+  });
+  
+  if (agendamentosFiltrados.length === 0) {
+    selectAg.innerHTML = '<option value="">Nenhum agendamento</option>';
+    return;
+  }
+  
+  let html = '<option value="">Selecione</option>';
+  
+  agendamentosFiltrados.forEach(ag => {
+    const cliente = clientesCache[ag.cliente_id];
+    const servico = servicos.find(s => s.id === ag.servico_id);
+    if (!cliente || !servico) return;
+    
+    const data = new Date(ag.data_agendamento).toLocaleDateString('pt-BR');
+    html += `<option value="${ag.id}">${data} ${ag.horario} - ${cliente.nome}</option>`;
+  });
+  
+  selectAg.innerHTML = html;
 }
-
 // 🟢 FUNÇÃO 6: Marcar concluído por profissional
 async function marcarConcluidoPorProfissional() {
-  // USANDO O SELECT QUE JÁ EXISTE
-  const selectAg = document.getElementById('selectAgendamento');
+  // USANDO O SELECT CORRETO QUE EXISTE NO HTML
+  const selectAg = document.getElementById('selectAgendamentoConcluido');
   
   if (!selectAg) {
     mostrarMensagem('Erro: select não encontrado', 'erro');
