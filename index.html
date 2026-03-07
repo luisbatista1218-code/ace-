@@ -521,7 +521,7 @@ function toggleProfissional(conteudoId, trianguloId) {
   }
 }
 
-// 🟢 FUNÇÃO 3: Gerar HTML dos agendamentos (EXATAMENTE IGUAL AO ANTIGO)
+// 🟢 FUNÇÃO 3: Gerar HTML dos agendamentos (IGUALZINHO AO ORIGINAL)
 function gerarHtmlAgendamentos(agendamentosLista) {
   let html = '';
   
@@ -535,16 +535,14 @@ function gerarHtmlAgendamentos(agendamentosLista) {
     const statusColor = ag.status === 'concluido' ? '#10b981' : '#3b82f6';
     
     html += `
-      <div style="margin: 15px 0; position: relative; padding-right: 30px;">
+      <div style="margin: 20px 0; position: relative; font-family: monospace; white-space: pre; font-size: 14px;">
         <button onclick="abrirModalExclusao('${ag.id}', 'admin')" 
-                style="position: absolute; right: 0; top: 0; background: #ef4444; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; cursor: pointer;">🗑️</button>
-        <div><strong>Cliente:</strong> ${cliente.nome}</div>
-        <div><strong>Telefone:</strong> ${cliente.telefone}</div>
-        <div><strong>Data/Horário:</strong> ${dataFormatada} - ${ag.horario}</div>
-        <div><strong>Serviço:</strong> ${servico.nome}</div>
-        <div><strong>Profissional:</strong> ${servico.profissional}</div>
-        <div><strong>Status:</strong> <span style="color: ${statusColor};">${ag.status}</span></div>
-        <div><strong>Código:</strong> ${ag.codigo_confirmacao || ''}</div>
+                style="position: absolute; right: 0; top: 0; background: #ef4444; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-family: monospace;">🗑️</button>
+        <div>Cliente: ${cliente.nome.padEnd(25)} Telefone: ${cliente.telefone}</div>
+        <div>Data/Horário: ${dataFormatada} Serviço: ${servico.nome.substring(0,10)}</div>
+        <div> - ${ag.horario.padStart(8)}</div>
+        <div>Profissional: <span style="color: #3b82f6;">${servico.profissional}</span> Status: <span style="color: ${statusColor};">${ag.status}</span></div>
+        <div>Código: <span style="color: #3b82f6;">${ag.codigo_confirmacao || ''}</span></div>
       </div>
     `;
   });
