@@ -1182,6 +1182,7 @@ function selecionarData(data) {
   }
 }*/
 
+/* segunda
 async function carregarProfissionais() {
   const container = document.getElementById('listaProfissionais');
   container.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Carregando...</div>';
@@ -1291,8 +1292,92 @@ async function carregarProfissionais() {
     console.error('Erro:', error);
     container.innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">⚠️ Erro</div>';
   }
-}
+}*/
+ async function carregarProfissionais() {
+  const container = document.getElementById('listaProfissionais');
+  container.innerHTML = '<div class="loading"><div class="loading-spinner"></div>Carregando...</div>';
   
+  if (!dataSelecionada) {
+    mostrarMensagem('Selecione uma data!', 'erro');
+    mostrarTela('calendario');
+    return;
+  }
+  
+  try {
+    await carregarServicos();
+    await carregarFolgas();
+    
+    // ✅ CORREÇÃO: Verifica APENAS folga GERAL (sem profissional)
+    const temFolgaGeral = folgas.some(f => f.data_folga === dataSelecionada && f.profissional === null);
+    
+    if (temFolgaGeral) {
+      const motivo = folgas.find(f => f.data_folga === dataSelecionada && f.profissional === null)?.motivo || 'Folga';
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: #ef4444;">
+          🏖️<br>
+          <h3>${motivo}</h3>
+          <p>Não há atendimento nesta data</p>
+          <button class="btn-limpar" onclick="mostrarCalendario()" style="margin-top: 20px;">Escolher outra data</button>
+        </div>
+      `;
+      return;
+    }
+    
+    const profissionaisUnicos = [...new Set(servicos.map(s => s.profissional))];
+    
+    if (profissionaisUnicos.length === 0) {
+      container.innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">👨‍💼<br><h3>Nenhum profissional</h3></div>';
+      return;
+    }
+    
+    let html = '';
+    profissionaisUnicos.forEach(profissional => {
+      const servicosDoProfissional = servicos.filter(s => s.profissional === profissional);
+      const servicosLista = servicosDoProfissional.map(s => 
+        `<div style="margin-bottom: 5px;"><strong>${s.nome}</strong> - ${s.tempo_minutos}min (R$ ${s.preco.toFixed(2)})</div>`
+      ).join('');
+      
+      // ✅ VERIFICA SE ESTE PROFISSIONAL TEM FOLGA ESPECÍFICA
+      const temFolgaProfissional = folgas.some(f => f.data_folga === dataSelecionada && f.profissional === profissional);
+      
+      if (temFolgaProfissional) {
+        // PROFISSIONAL DE FOLGA: VERMELHO E SEM CLIQUE (layout original preservado)
+        html += `
+          <div class="profissional-item" style="background: #fee2e2; border-color: #ef4444; opacity: 0.7; cursor: not-allowed;" title="Este profissional está de folga">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div style="flex: 1;">
+                <h3 style="font-size: 18px; margin-bottom: 10px; color: #dc2626;">👨‍💼 ${profissional} 🏖️</h3>
+                <div style="color: #991b1b; font-size: 14px;">
+                  ${servicosLista}
+                </div>
+                <div style="color: #dc2626; font-weight: 600; margin-top: 10px;">⛔ Profissional em folga</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        // PROFISSIONAL NORMAL (layout original)
+        html += `
+          <div class="profissional-item" onclick="selecionarProfissional('${profissional}')">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div style="flex: 1;">
+                <h3 style="font-size: 18px; margin-bottom: 10px; color: #1e293b;">👨‍💼 ${profissional}</h3>
+                <div style="color: #64748b; font-size: 14px;">
+                  ${servicosLista}
+                </div>
+              </div>
+              <div style="color: #3b82f6; font-size: 24px; margin-left: 15px;">→</div>
+            </div>
+          </div>
+        `;
+      }
+    });
+    
+    container.innerHTML = html;
+  } catch (error) {
+    container.innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">⚠️<br><h3>Erro</h3></div>';
+  }
+} 
 function selecionarProfissional(profissional) {
   profissionalSelecionado = profissional;
   document.querySelectorAll('.profissional-item').forEach(item => item.classList.remove('selecionado'));
